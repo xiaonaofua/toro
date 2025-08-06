@@ -1,27 +1,23 @@
+# Node modules
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+package-lock.json
+
+# SQL 腳本文件
+*.sql
+
+# 調試和指南文件
+DEBUG_STEPS.md
+SECURITY_GUIDE.md
+SETUP_GUIDE.md
+URGENT_FIX_INSTRUCTIONS.txt
+
+# 截圖和臨時文件
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# 系統文件
 .DS_Store
-.vscode/
+.env
 *.log
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Supabase local config
-.env
-lanterns.json
-dist/
-build/
-.vercel
-
-# Image files (optional - uncomment if you want to ignore all images)
-# *.png
-# *.jpg
-# *.jpeg
-# *.gif
-# *.bmp
-# *.webp

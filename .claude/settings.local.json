@@ -9,7 +9,8 @@
       "Bash(rmdir:*)",
       "Bash(rm:*)",
       "Bash(ls:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(del:*)"
     ],
     "deny": []
   }
