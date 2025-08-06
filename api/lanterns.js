@@ -1,19 +1,18 @@
-// Vercel无服务器函数处理水灯数据
-import { createClient } from '@vercel/kv';
+// Supabase integration for water lanterns
+import { createClient } from '@supabase/supabase-js';
 
-// 由于Vercel无法直接写文件，我们使用Vercel KV存储
-// 如果没有配置KV，则返回模拟数据
-let kv;
-try {
-  kv = createClient({
-    url: process.env.KV_REST_API_URL,
-    token: process.env.KV_REST_API_TOKEN,
-  });
-} catch (error) {
-  console.log('KV not configured, using in-memory storage');
+// Supabase configuration
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+let supabase;
+if (supabaseUrl && supabaseKey) {
+  supabase = createClient(supabaseUrl, supabaseKey);
+} else {
+  console.warn('Supabase credentials not found. Using fallback data.');
 }
 
-// 默认水灯数据
+// Default lanterns for fallback
 const defaultLanterns = [
   { id: 1, baseX: 200, baseY: 300, message: '愿所有人平安健康', angle: 1.2, floatSpeed: 0.03, bobAmount: 3, driftSpeed: 0.15, driftAngle: 0.5, time: 100, rotationSpeed: 0.005, depth: 0.8, timestamp: new Date().toISOString() },
   { id: 2, baseX: 400, baseY: 250, message: '心想事成，万事如意', angle: 2.1, floatSpeed: 0.025, bobAmount: 2.5, driftSpeed: 0.12, driftAngle: 1.2, time: 200, rotationSpeed: -0.003, depth: 0.6, timestamp: new Date().toISOString() },
@@ -38,7 +37,7 @@ const defaultLanterns = [
 ];
 
 export default async function handler(req, res) {
-  // 设置CORS头
+  // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -50,50 +49,86 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      // 获取所有水灯数据
+      // Get all lanterns
       let lanterns;
-      if (kv) {
-        lanterns = await kv.get('water-lanterns');
-        if (!lanterns) {
-          await kv.set('water-lanterns', defaultLanterns);
+      
+      if (supabase) {
+        const { data, error } = await supabase
+          .from('water_lanterns')
+          .select('*')
+          .order('id', { ascending: true });
+
+        if (error) {
+          console.error('Supabase error:', error);
           lanterns = defaultLanterns;
+        } else {
+          lanterns = data.length > 0 ? data : defaultLanterns;
+          
+          // Initialize table with default data if empty
+          if (data.length === 0) {
+            const { error: insertError } = await supabase
+              .from('water_lanterns')
+              .insert(defaultLanterns);
+              
+            if (!insertError) {
+              lanterns = defaultLanterns;
+            }
+          }
         }
       } else {
         lanterns = defaultLanterns;
       }
+      
       res.status(200).json(lanterns);
     }
     
     else if (req.method === 'POST') {
-      // 添加单个水灯
+      // Add single lantern
       const newLantern = req.body;
       
       if (!newLantern.message || newLantern.message.length > 140) {
         return res.status(400).json({ error: '消息内容无效' });
       }
 
-      let lanterns;
-      if (kv) {
-        lanterns = await kv.get('water-lanterns') || defaultLanterns;
-        lanterns.push(newLantern);
-        await kv.set('water-lanterns', lanterns);
+      if (supabase) {
+        const { data, error } = await supabase
+          .from('water_lanterns')
+          .insert([newLantern])
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Supabase insert error:', error);
+          return res.status(500).json({ error: '保存到数据库失败' });
+        }
+        
+        res.status(200).json({ success: true, lantern: data });
       } else {
-        lanterns = [...defaultLanterns, newLantern];
+        res.status(200).json({ success: true, lantern: newLantern });
       }
-      
-      res.status(200).json({ success: true, lantern: newLantern });
     }
     
     else if (req.method === 'PUT') {
-      // 更新所有水灯数据
+      // Update all lanterns (batch update)
       const lanternDataArray = req.body;
       
       if (!Array.isArray(lanternDataArray)) {
         return res.status(400).json({ error: '数据格式错误' });
       }
 
-      if (kv) {
-        await kv.set('water-lanterns', lanternDataArray);
+      if (supabase) {
+        // Delete all existing records
+        await supabase.from('water_lanterns').delete().neq('id', 0);
+        
+        // Insert new records
+        const { error } = await supabase
+          .from('water_lanterns')
+          .insert(lanternDataArray);
+
+        if (error) {
+          console.error('Supabase batch update error:', error);
+          return res.status(500).json({ error: '批量更新失败' });
+        }
       }
       
       res.status(200).json({ success: true, count: lanternDataArray.length });

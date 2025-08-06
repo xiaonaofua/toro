@@ -341,6 +341,9 @@ class WaterLanternApp {
                 },
                 body: JSON.stringify(lanternData),
             });
+            if (response.ok) {
+                console.log('数据已保存到Supabase');
+            }
         } catch (error) {
             console.log('离线模式：数据将保存在本地存储中');
             localStorage.setItem('waterLanterns', JSON.stringify(lanternData));
@@ -356,6 +359,9 @@ class WaterLanternApp {
                 },
                 body: JSON.stringify(lantern.toSaveData()),
             });
+            if (response.ok) {
+                console.log('新水灯已添加到Supabase');
+            }
         } catch (error) {
             console.log('离线模式：数据将保存在本地存储中');
             const lanternData = this.lanterns.map(l => l.toSaveData());
@@ -370,7 +376,7 @@ class WaterLanternApp {
             const response = await fetch('/api/lanterns?' + new Date().getTime());
             if (response.ok) {
                 const data = await response.json();
-                console.log('从服务器加载水灯数据:', data.length + '个');
+                console.log('从Supabase加载水灯数据:', data.length + '个');
                 
                 data.forEach(item => {
                     const lantern = new WaterLantern(item.id, item.baseX || item.x, item.baseY || item.y, item.message, item);
@@ -380,7 +386,7 @@ class WaterLanternApp {
                 loaded = true;
             }
         } catch (error) {
-            console.log('无法连接服务器，尝试本地存储');
+            console.log('无法连接Supabase，尝试本地存储');
         }
         
         if (!loaded) {

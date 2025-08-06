@@ -13,7 +13,8 @@
 ## 快速開始
 
 ### 在線體驗
-部署到 [Vercel](https://vercel.com) 即可在線使用。
+- **GitHub Pages**: 純前端版本，數據僅保存在本地
+- **Vercel + Supabase**: 完整版本，支持多用戶共享水燈
 
 ### 本地運行
 ```bash
@@ -27,10 +28,15 @@ npm start
 ### GitHub
 雙擊運行 `quick-deploy.bat` 或 `push.bat`
 
-### Vercel
+### GitHub Pages（純前端版）
 1. 推送代碼到GitHub
-2. 在Vercel導入倉庫
-3. 點擊Deploy
+2. 在倉庫Settings中啟用Pages
+3. 訪問 https://xiaonaofua.github.io/toro/
+
+### Vercel + Supabase（完整版）
+1. 按照 `SUPABASE_SETUP_GUIDE.md` 設置數據庫
+2. 在Vercel導入GitHub倉庫並配置環境變量
+3. 一鍵部署完成
 
 ## 使用方法
 
@@ -42,8 +48,9 @@ npm start
 ## 技術棧
 
 - 前端：HTML5 Canvas + JavaScript
-- 後端：Node.js / Vercel Functions
-- 存儲：本地JSON / Vercel KV
+- 部署：GitHub Pages / Vercel
+- 數據庫：Supabase PostgreSQL
+- 存儲：雲端數據庫 + 本地存儲備份
 
 ## 許可證
 
