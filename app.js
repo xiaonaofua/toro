@@ -1,18 +1,41 @@
+// 純前端版本 - 直接連接Supabase
+// 可部署到任何靜態託管平台（GitHub Pages, Netlify等）
+
+// Supabase 配置 - 在這裡直接填入您的配置
+const SUPABASE_URL = 'https://bvdgbnlzfyygosqtknaw.supabase.co'; 
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ2ZGdibmx6Znl5Z29zcXRrbmF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0NzM3OTQsImV4cCI6MjA3MDA0OTc5NH0.OYPJoXN9LNQuIfyWyDXs0V2BvdbS7Rkw-mXcVskrv4g';
+
+// 動態加載Supabase客戶端
+let supabase = null;
+
+async function initSupabase() {
+    try {
+        // 從CDN加載Supabase
+        const { createClient } = await import('https://cdn.skypack.dev/@supabase/supabase-js@2');
+        supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        console.log('Supabase客戶端初始化成功');
+        return true;
+    } catch (error) {
+        console.warn('無法加載Supabase，將使用本地存儲模式', error);
+        return false;
+    }
+}
+
 class WaterLantern {
     constructor(id, x, y, message, savedData = null) {
         this.id = id;
         this.message = message;
         
         if (savedData) {
-            this.baseX = savedData.baseX;
-            this.baseY = savedData.baseY;
-            this.angle = savedData.angle;
-            this.floatSpeed = savedData.floatSpeed;
-            this.bobAmount = savedData.bobAmount;
-            this.driftSpeed = savedData.driftSpeed;
-            this.driftAngle = savedData.driftAngle;
-            this.time = savedData.time;
-            this.rotationSpeed = savedData.rotationSpeed;
+            this.baseX = savedData.baseX || savedData.basex;
+            this.baseY = savedData.baseY || savedData.basey;
+            this.angle = savedData.angle || 0;
+            this.floatSpeed = savedData.floatSpeed || savedData.floatspeed || 0.03;
+            this.bobAmount = savedData.bobAmount || savedData.bobamount || 3;
+            this.driftSpeed = savedData.driftSpeed || savedData.driftspeed || 0.15;
+            this.driftAngle = savedData.driftAngle || savedData.driftangle || 0;
+            this.time = savedData.time || 0;
+            this.rotationSpeed = savedData.rotationSpeed || savedData.rotationspeed || 0;
             this.depth = savedData.depth || 0.5;
         } else {
             this.baseX = x;
@@ -50,29 +73,29 @@ class WaterLantern {
         ctx.save();
         ctx.globalAlpha = alpha;
         
-        // 水灯底座（木质船体）
+        // 水燈底座（木質船體）
         const boatWidth = 16 * scale;
         const boatHeight = 6 * scale;
         ctx.fillStyle = '#8B4513';
         ctx.fillRect(this.x - boatWidth/2, this.y + 2*scale, boatWidth, boatHeight);
         
-        // 蜡烛主体
+        // 蠟燭主體
         const candleWidth = 6 * scale;
         const candleHeight = 12 * scale;
         ctx.fillStyle = '#FFF8DC';
         ctx.fillRect(this.x - candleWidth/2, this.y - candleHeight/2, candleWidth, candleHeight);
         
-        // 蜡烛火焰
+        // 蠟燭火焰
         const flameHeight = 8 * scale;
         const flameWidth = 4 * scale;
-        // 外层火焰（橙色）
+        // 外層火焰（橙色）
         ctx.fillStyle = '#FF6B35';
         ctx.fillRect(this.x - flameWidth/2, this.y - candleHeight/2 - flameHeight, flameWidth, flameHeight);
-        // 内层火焰（黄色）
+        // 內層火焰（黃色）
         ctx.fillStyle = '#FFD700';
         ctx.fillRect(this.x - flameWidth/3, this.y - candleHeight/2 - flameHeight + 2*scale, flameWidth/1.5, flameHeight - 2*scale);
         
-        // 火焰光晕效果
+        // 火焰光暈效果
         ctx.globalAlpha = 0.3;
         ctx.fillStyle = '#FFA500';
         const glowSize = 12 * scale;
@@ -129,9 +152,15 @@ class WaterLanternApp {
         this.nextId = 1;
         this.isAddingMode = false;
         this.lakeArea = null;
+        this.supabaseEnabled = false;
         
+        this.init();
+    }
+
+    async init() {
         this.setupCanvas();
-        this.loadLanterns();
+        this.supabaseEnabled = await initSupabase();
+        await this.loadLanterns();
         this.setupEventListeners();
         this.gameLoop();
     }
@@ -182,7 +211,7 @@ class WaterLanternApp {
     }
 
     drawBackground() {
-        // 渐变天空背景
+        // 漸變天空背景
         const skyGradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height * 0.4);
         skyGradient.addColorStop(0, '#1a1a3e');
         skyGradient.addColorStop(0.7, '#2c3e60');
@@ -198,14 +227,14 @@ class WaterLanternApp {
     drawMountains() {
         const baselineY = this.canvas.height * 0.35;
         
-        // 主富士山形状
+        // 主富士山形狀
         const mainPeak = {
             x: this.canvas.width * 0.3,
             height: this.canvas.height * 0.28,
             width: this.canvas.width * 0.4
         };
         
-        // 绘制主山峰（类似富士山）
+        // 繪製主山峰（類似富士山）
         this.ctx.fillStyle = '#1a252f';
         this.ctx.beginPath();
         this.ctx.moveTo(mainPeak.x - mainPeak.width/2, baselineY);
@@ -214,7 +243,7 @@ class WaterLanternApp {
         this.ctx.closePath();
         this.ctx.fill();
         
-        // 绘制更深色的山体阴影
+        // 繪製更深色的山體陰影
         this.ctx.fillStyle = '#0f1419';
         this.ctx.beginPath();
         this.ctx.moveTo(mainPeak.x, baselineY - mainPeak.height);
@@ -223,7 +252,7 @@ class WaterLanternApp {
         this.ctx.closePath();
         this.ctx.fill();
         
-        // 左侧较小的山峰
+        // 左側較小的山峰
         this.ctx.fillStyle = '#243342';
         this.ctx.beginPath();
         this.ctx.moveTo(0, baselineY);
@@ -232,7 +261,7 @@ class WaterLanternApp {
         this.ctx.closePath();
         this.ctx.fill();
         
-        // 右侧山峰群
+        // 右側山峰群
         const rightPeaks = [
             { x: this.canvas.width * 0.6, height: this.canvas.height * 0.18 },
             { x: this.canvas.width * 0.75, height: this.canvas.height * 0.22 },
@@ -250,7 +279,7 @@ class WaterLanternApp {
         this.ctx.closePath();
         this.ctx.fill();
         
-        // 添加山顶积雪效果
+        // 添加山頂積雪效果
         this.ctx.fillStyle = '#5a6b7c';
         this.ctx.beginPath();
         this.ctx.moveTo(mainPeak.x - 15, baselineY - mainPeak.height + 10);
@@ -285,21 +314,21 @@ class WaterLanternApp {
                y >= this.lakeArea.y && y <= this.lakeArea.y + this.lakeArea.height;
     }
 
-    handleAddLantern(x, y) {
+    async handleAddLantern(x, y) {
         if (!this.isInLake(x, y)) {
-            alert('请点击湖面来放置水灯！');
+            alert('請點擊湖面來放置水燈！');
             return;
         }
 
         const message = this.messageInput.value.trim();
         if (!message) {
-            alert('请输入水灯上的消息！');
+            alert('請輸入水燈上的消息！');
             return;
         }
 
         const lantern = new WaterLantern(this.nextId++, x, y, message);
         this.lanterns.push(lantern);
-        this.addSingleLantern(lantern);
+        await this.addSingleLantern(lantern);
         
         this.isAddingMode = false;
         this.addForm.style.display = 'none';
@@ -333,60 +362,80 @@ class WaterLanternApp {
     async saveLanterns() {
         const lanternData = this.lanterns.map(l => l.toSaveData());
         
-        try {
-            const response = await fetch('/api/lanterns', {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(lanternData),
-            });
-            if (response.ok) {
-                console.log('数据已保存到Supabase');
+        if (this.supabaseEnabled && supabase) {
+            try {
+                // 刪除所有現有記錄
+                await supabase.from('water_lanterns').delete().neq('id', 0);
+                
+                // 插入新記錄
+                const { error } = await supabase
+                    .from('water_lanterns')
+                    .insert(lanternData);
+
+                if (error) {
+                    console.error('Supabase批量更新失敗:', error);
+                    localStorage.setItem('waterLanterns', JSON.stringify(lanternData));
+                } else {
+                    console.log('數據已保存到Supabase');
+                }
+            } catch (error) {
+                console.error('Supabase操作失敗:', error);
+                localStorage.setItem('waterLanterns', JSON.stringify(lanternData));
             }
-        } catch (error) {
-            console.log('离线模式：数据将保存在本地存储中');
+        } else {
             localStorage.setItem('waterLanterns', JSON.stringify(lanternData));
+            console.log('數據已保存到本地存儲');
         }
     }
     
     async addSingleLantern(lantern) {
-        try {
-            const response = await fetch('/api/lanterns', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(lantern.toSaveData()),
-            });
-            if (response.ok) {
-                console.log('新水灯已添加到Supabase');
+        if (this.supabaseEnabled && supabase) {
+            try {
+                const { data, error } = await supabase
+                    .from('water_lanterns')
+                    .insert([lantern.toSaveData()])
+                    .select()
+                    .single();
+
+                if (error) {
+                    console.error('Supabase插入失敗:', error);
+                    this.saveLanterns(); // 備份到本地
+                } else {
+                    console.log('新水燈已添加到Supabase');
+                }
+            } catch (error) {
+                console.error('Supabase操作失敗:', error);
+                this.saveLanterns(); // 備份到本地
             }
-        } catch (error) {
-            console.log('离线模式：数据将保存在本地存储中');
-            const lanternData = this.lanterns.map(l => l.toSaveData());
-            localStorage.setItem('waterLanterns', JSON.stringify(lanternData));
+        } else {
+            this.saveLanterns();
         }
     }
 
     async loadLanterns() {
         let loaded = false;
         
-        try {
-            const response = await fetch('/api/lanterns?' + new Date().getTime());
-            if (response.ok) {
-                const data = await response.json();
-                console.log('从Supabase加载水灯数据:', data.length + '个');
-                
-                data.forEach(item => {
-                    const lantern = new WaterLantern(item.id, item.baseX || item.x, item.baseY || item.y, item.message, item);
-                    this.lanterns.push(lantern);
-                    this.nextId = Math.max(this.nextId, item.id + 1);
-                });
-                loaded = true;
+        if (this.supabaseEnabled && supabase) {
+            try {
+                const { data, error } = await supabase
+                    .from('water_lanterns')
+                    .select('*')
+                    .order('id', { ascending: true });
+
+                if (!error && data && data.length > 0) {
+                    console.log('從Supabase加載水燈數據:', data.length + '個');
+                    data.forEach(item => {
+                        const lantern = new WaterLantern(item.id, item.baseX, item.baseY, item.message, item);
+                        this.lanterns.push(lantern);
+                        this.nextId = Math.max(this.nextId, item.id + 1);
+                    });
+                    loaded = true;
+                } else {
+                    console.log('Supabase中無數據，將創建初始數據');
+                }
+            } catch (error) {
+                console.error('從Supabase加載數據失敗:', error);
             }
-        } catch (error) {
-            console.log('无法连接Supabase，尝试本地存储');
         }
         
         if (!loaded) {
@@ -394,7 +443,7 @@ class WaterLanternApp {
             if (saved) {
                 try {
                     const data = JSON.parse(saved);
-                    console.log('从本地存储加载水灯数据:', data.length + '个');
+                    console.log('從本地存儲加載水燈數據:', data.length + '個');
                     data.forEach(item => {
                         const lantern = new WaterLantern(item.id, item.baseX || item.x, item.baseY || item.y, item.message, item);
                         this.lanterns.push(lantern);
@@ -402,28 +451,28 @@ class WaterLanternApp {
                     });
                     loaded = true;
                 } catch (e) {
-                    console.log('本地数据解析失败');
+                    console.log('本地數據解析失敗，將創建初始數據');
                 }
             }
         }
 
         if (!loaded || this.lanterns.length === 0) {
-            console.log('创建初始水灯');
+            console.log('創建初始水燈');
             this.createInitialLanterns();
         }
         
-        console.log('总共加载了', this.lanterns.length, '个水灯');
+        console.log('總共加載了', this.lanterns.length, '個水燈');
     }
 
     createInitialLanterns() {
         const messages = [
-            '愿所有人平安健康', '心想事成，万事如意', '希望疫情早日结束',
-            '祈祷世界和平', '愿家人身体健康', '希望明天更美好',
-            '感谢生命中的每一天', '愿爱永远传递', '祝愿所有人快乐',
-            '希望梦想成真', '愿友谊长存', '祈求风调雨顺',
-            '希望学业进步', '愿工作顺利', '祝福所有的孩子',
-            '希望环境更美好', '愿所有动物平安', '祈祷没有战争',
-            '希望科技造福人类', '愿每个人都有温饱'
+            '願所有人平安健康', '心想事成，萬事如意', '希望疫情早日結束',
+            '祈禱世界和平', '願家人身體健康', '希望明天更美好',
+            '感謝生命中的每一天', '願愛永遠傳遞', '祝願所有人快樂',
+            '希望夢想成真', '願友誼長存', '祈求風調雨順',
+            '希望學業進步', '願工作順利', '祝福所有的孩子',
+            '希望環境更美好', '願所有動物平安', '祈禱沒有戰爭',
+            '希望科技造福人類', '願每個人都有溫飽'
         ];
 
         for (let i = 0; i < 20; i++) {
@@ -466,10 +515,10 @@ function cancelAdd() {
 
 function confirmAdd() {
     if (!app.messageInput.value.trim()) {
-        alert('请输入水灯上的消息！');
+        alert('請輸入水燈上的消息！');
         return;
     }
-    alert('现在点击湖面选择水灯位置');
+    alert('現在點擊湖面選擇水燈位置');
 }
 
 let app;

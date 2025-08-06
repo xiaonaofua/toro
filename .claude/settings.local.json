@@ -8,7 +8,8 @@
       "Bash(npm start)",
       "Bash(rmdir:*)",
       "Bash(rm:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(mv:*)"
     ],
     "deny": []
   }

@@ -10,8 +10,5 @@
   "keywords": ["water-lantern", "interactive", "web-app"],
   "author": "",
   "license": "MIT",
-  "dependencies": {
-    "express": "^4.18.2",
-    "@supabase/supabase-js": "^2.39.0"
-  }
+  "dependencies": {}
 }
