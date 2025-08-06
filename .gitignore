@@ -14,3 +14,11 @@ lanterns.json
 dist/
 build/
 .vercel
+
+# Image files (optional - uncomment if you want to ignore all images)
+# *.png
+# *.jpg
+# *.jpeg
+# *.gif
+# *.bmp
+# *.webp
