@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>燈籠流水 - 放水灯</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a2e;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+        
+        #canvas {
+            display: block;
+            cursor: crosshair;
+        }
+        
+        #tooltip {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.95);
+            border: 2px solid #333;
+            border-radius: 8px;
+            padding: 10px;
+            max-width: 200px;
+            font-size: 12px;
+            color: #333;
+            pointer-events: none;
+            display: none;
+            z-index: 1000;
+            word-wrap: break-word;
+        }
+        
+        #tooltip::before {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 8px solid #333;
+        }
+        
+        #addLanternForm {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+            z-index: 1000;
+        }
+        
+        #addLanternForm input, #addLanternForm textarea {
+            width: 200px;
+            margin: 5px 0;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        
+        #addLanternForm textarea {
+            height: 60px;
+            resize: none;
+        }
+        
+        #addLanternForm button {
+            background: #4a90e2;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        
+        #addLanternForm button:hover {
+            background: #357abd;
+        }
+        
+        #addButton {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: #e2a04a;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        #addButton:hover {
+            background: #c8893d;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="tooltip"></div>
+    
+    <button id="addButton">添加水灯</button>
+    
+    <div id="addLanternForm">
+        <h3>添加水灯</h3>
+        <input type="text" id="messageInput" placeholder="请输入140字内的消息..." maxlength="140">
+        <br>
+        <button onclick="cancelAdd()">取消</button>
+        <button onclick="confirmAdd()">确认添加</button>
+        <p style="font-size: 12px; color: #666;">点击湖面选择位置</p>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
