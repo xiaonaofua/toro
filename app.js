@@ -408,25 +408,64 @@ class WaterLanternApp {
     }
     
     async addSingleLantern(lantern) {
+        console.log('嘗試添加新水燈:', lantern.toSaveData());
+        
         if (this.supabaseEnabled && supabase) {
             try {
+                const lanternData = lantern.toSaveData();
+                console.log('發送到Supabase的數據:', lanternData);
+                
+                // 清理和驗證數據
+                const cleanData = {
+                    baseX: Number(lanternData.baseX) || 0,
+                    baseY: Number(lanternData.baseY) || 0,
+                    message: String(lanternData.message || '').substring(0, 140),
+                    angle: Number(lanternData.angle) || 0,
+                    floatSpeed: Number(lanternData.floatSpeed) || 0.03,
+                    bobAmount: Number(lanternData.bobAmount) || 3,
+                    driftSpeed: Number(lanternData.driftSpeed) || 0.15,
+                    driftAngle: Number(lanternData.driftAngle) || 0,
+                    time: Number(lanternData.time) || 0,
+                    rotationSpeed: Number(lanternData.rotationSpeed) || 0,
+                    depth: Number(lanternData.depth) || 0.5
+                    // 不包含 id 和 timestamp，讓數據庫自動生成
+                };
+                
+                console.log('清理後的數據:', cleanData);
+                
                 const { data, error } = await supabase
                     .from('water_lanterns')
-                    .insert([lantern.toSaveData()])
+                    .insert([cleanData])
                     .select()
                     .single();
 
                 if (error) {
-                    console.error('Supabase插入失敗:', error);
+                    console.error('❌ Supabase插入失敗:', error);
+                    console.error('錯誤詳情:', {
+                        message: error.message,
+                        details: error.details,
+                        hint: error.hint,
+                        code: error.code
+                    });
+                    
+                    // 顯示用戶友好的錯誤信息
+                    alert(`保存失敗: ${error.message}\n請檢查數據庫設置或稍後再試`);
+                    
                     this.saveLanterns(); // 備份到本地
                 } else {
-                    console.log('新水燈已添加到Supabase');
+                    console.log('✅ 新水燈已添加到Supabase:', data);
+                    // 更新本地水燈的ID為數據庫返回的ID
+                    if (data && data.id) {
+                        lantern.id = data.id;
+                    }
                 }
             } catch (error) {
-                console.error('Supabase操作失敗:', error);
+                console.error('❌ Supabase操作異常:', error);
+                alert(`網絡或連接錯誤: ${error.message}`);
                 this.saveLanterns(); // 備份到本地
             }
         } else {
+            console.log('⚠️ Supabase未啟用，保存到本地存儲');
             this.saveLanterns();
         }
     }

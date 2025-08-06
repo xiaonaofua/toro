@@ -1,0 +1,40 @@
+🚨 緊急數據庫修復指令 🚨
+
+您正在看到 "Could not find the 'baseX' column" 錯誤的原因：
+數據庫表結構不完整，缺少必需的列。
+
+=== 立即執行以下步驟 ===
+
+1. 打開 Supabase 項目
+   訪問：https://supabase.com/dashboard/projects
+
+2. 點擊您的項目（bvdgbnlzfyygosqtknaw）
+
+3. 在左側菜單中點擊 "SQL Editor"
+
+4. 點擊 "New query"
+
+5. 完全複製 FINAL_DATABASE_FIX.sql 文件的全部內容並粘貼
+
+6. 點擊 "Run" 按鈕執行
+
+7. 等待執行完成，應該看到：
+   ✅ 表結構顯示（包含 baseX, baseY 等列）
+   ✅ 3條測試數據
+   ✅ 無錯誤信息
+
+8. 刷新您的網頁，錯誤應該消失
+
+=== 如果仍有問題 ===
+
+請檢查：
+- 是否完整複製了整個SQL腳本
+- 是否點擊了 "Run" 按鈕
+- 控制台是否還有其他錯誤信息
+
+這個修復方案會：
+✅ 完全重建表結構
+✅ 添加所有必需的列
+✅ 禁用安全限制
+✅ 插入測試數據
+✅ 解決 "baseX column not found" 錯誤
