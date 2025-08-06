@@ -159,6 +159,7 @@ class WaterLanternApp {
 
     async init() {
         this.setupCanvas();
+        this.checkConfiguration();
         this.supabaseEnabled = await initSupabase();
         await this.loadLanterns();
         this.setupEventListeners();
@@ -208,6 +209,24 @@ class WaterLanternApp {
         this.canvas.addEventListener('mouseleave', () => {
             this.hideTooltip();
         });
+    }
+
+    checkConfiguration() {
+        const notice = document.getElementById('configNotice');
+        
+        // 檢查配置是否正確
+        if (SUPABASE_URL === 'https://your-project-id.supabase.co' || 
+            SUPABASE_ANON_KEY === 'your-anon-public-key-here' ||
+            !SUPABASE_URL.includes('supabase.co') ||
+            SUPABASE_ANON_KEY.length < 50) {
+            // 配置不正確，顯示提示
+            notice.style.display = 'block';
+            console.warn('請配置Supabase URL和API Key');
+        } else {
+            // 配置正確，隱藏提示
+            notice.style.display = 'none';
+            console.log('Supabase配置已正確設置');
+        }
     }
 
     drawBackground() {
