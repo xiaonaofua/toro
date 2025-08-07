@@ -606,6 +606,37 @@ class WaterLanternApp {
             }, 3000);
         }
     }
+    
+    showSuccessMessage(message) {
+        // 创建成功提示元素
+        const successHint = document.createElement('div');
+        successHint.style.cssText = `
+            position: fixed;
+            top: 30%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(40, 167, 69, 0.95);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            z-index: 1002;
+            pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            text-align: center;
+            animation: successFade 2s ease-in-out;
+        `;
+        successHint.innerHTML = message;
+        document.body.appendChild(successHint);
+        
+        // 2秒后自动删除
+        setTimeout(() => {
+            if (successHint && successHint.parentNode) {
+                successHint.parentNode.removeChild(successHint);
+            }
+        }, 2000);
+    }
 
     handleMouseMove(x, y) {
         if (this.isAddingMode) return;
@@ -700,8 +731,10 @@ class WaterLanternApp {
                         code: error.code
                     });
                     
-                    // 顯示用戶友好的錯誤信息
-                    alert(`保存失敗: ${error.message}\n請檢查數據庫設置或稍後再試`);
+                    // 只有在真正失败时才显示错误信息
+                    if (error.code !== 'PGRST116') { // 排除一些可能的假错误
+                        alert(`保存失敗: ${error.message}\n請檢查數據庫設置或稍後再試`);
+                    }
                     
                     this.saveLanterns(); // 備份到本地
                 } else {
@@ -709,6 +742,10 @@ class WaterLanternApp {
                     // 更新本地水燈的ID為數據庫返回的ID
                     if (data && data.id) {
                         lantern.id = data.id;
+                        console.log('🔄 水燈ID已更新為:', data.id);
+                        
+                        // 显示成功提示
+                        this.showSuccessMessage('🏮 水燈添加成功！');
                     }
                 }
             } catch (error) {

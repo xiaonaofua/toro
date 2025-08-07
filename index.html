@@ -194,6 +194,30 @@
                 transform: translate(-50%, -50%) scale(0.8); 
             }
         }
+        
+        /* 成功提示动画 */
+        @keyframes successFade {
+            0% { 
+                opacity: 0; 
+                transform: translate(-50%, -50%) scale(0.8); 
+            }
+            15% { 
+                opacity: 1; 
+                transform: translate(-50%, -50%) scale(1.05); 
+            }
+            25% { 
+                opacity: 1; 
+                transform: translate(-50%, -50%) scale(1); 
+            }
+            85% { 
+                opacity: 1; 
+                transform: translate(-50%, -50%) scale(1); 
+            }
+            100% { 
+                opacity: 0; 
+                transform: translate(-50%, -50%) scale(0.9); 
+            }
+        }
     </style>
 </head>
 <body>
