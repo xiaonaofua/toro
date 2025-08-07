@@ -323,6 +323,15 @@ class WaterLanternApp {
             this.addForm.style.display = 'block';
             this.canvas.style.cursor = 'crosshair';
         });
+        
+        // 添加取消和確認按鈕的事件監聽器
+        document.getElementById('cancelButton').addEventListener('click', () => {
+            this.cancelAdd();
+        });
+        
+        document.getElementById('confirmButton').addEventListener('click', () => {
+            this.confirmAdd();
+        });
 
         this.canvas.addEventListener('click', (e) => {
             if (this.isAddingMode) {
@@ -502,6 +511,25 @@ class WaterLanternApp {
         this.addForm.style.display = 'none';
         this.messageInput.value = '';
         this.canvas.style.cursor = 'default';
+    }
+    
+    cancelAdd() {
+        this.isAddingMode = false;
+        this.addForm.style.display = 'none';
+        this.messageInput.value = '';
+        this.canvas.style.cursor = 'default';
+    }
+    
+    confirmAdd() {
+        const message = this.messageInput.value.trim();
+        if (!message) {
+            alert('請輸入水燈上的消息！');
+            return;
+        }
+        
+        // 提示用戶點擊湖面選擇位置
+        alert('現在點擊湖面選擇水燈位置');
+        // isAddingMode 保持為 true，等待用戶點擊湖面
     }
 
     handleMouseMove(x, y) {
