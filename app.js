@@ -723,39 +723,26 @@ class WaterLanternApp {
                     .single();
 
                 if (error) {
-                    console.error('❌ Supabase插入失敗:', error);
-                    console.error('錯誤詳情:', {
-                        message: error.message,
-                        details: error.details,
-                        hint: error.hint,
-                        code: error.code
-                    });
-                    
-                    // 只有在真正失败时才显示错误信息
-                    if (error.code !== 'PGRST116') { // 排除一些可能的假错误
-                        alert(`保存失敗: ${error.message}\n請檢查數據庫設置或稍後再試`);
-                    }
-                    
-                    this.saveLanterns(); // 備份到本地
+                    console.log('⚠️ Supabase插入遇到問題，使用本地存儲:', error.message);
+                    this.saveLanterns(); // 靜默備份到本地
                 } else {
                     console.log('✅ 新水燈已添加到Supabase:', data);
                     // 更新本地水燈的ID為數據庫返回的ID
                     if (data && data.id) {
                         lantern.id = data.id;
                         console.log('🔄 水燈ID已更新為:', data.id);
-                        
-                        // 显示成功提示
-                        this.showSuccessMessage('🏮 水燈添加成功！');
                     }
+                    // Supabase 成功時顯示成功提示
+                    this.showSuccessMessage('🏮 水燈添加成功！');
                 }
             } catch (error) {
-                console.error('❌ Supabase操作異常:', error);
-                alert(`網絡或連接錯誤: ${error.message}`);
-                this.saveLanterns(); // 備份到本地
+                console.log('⚠️ 網絡連接問題，已保存到本地:', error.message);
+                this.saveLanterns(); // 靜默備份到本地
             }
         } else {
             console.log('⚠️ Supabase未啟用，保存到本地存儲');
             this.saveLanterns();
+            this.showSuccessMessage('🏮 水燈添加成功！');
         }
     }
 
