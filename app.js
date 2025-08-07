@@ -68,8 +68,8 @@ class WaterLantern {
 
     draw(ctx) {
         // 近大遠小效果：depth越大，水燈越大越亮
-        const baseScale = 0.3 + this.depth * 0.8;
-        const alpha = 0.6 + this.depth * 0.4;
+        const baseScale = 0.6 + this.depth * 0.6; // 增大基礎大小
+        const alpha = 0.7 + this.depth * 0.3;
         
         ctx.save();
         ctx.globalAlpha = alpha;
@@ -88,82 +88,40 @@ class WaterLantern {
     }
     
     drawPixelLantern(ctx, scale) {
-        const pixelSize = Math.max(1, Math.round(scale));
+        // 簡化的像素風格水燈，確保可見性
+        const pixelScale = scale * 16; // 放大像素尺寸
         
-        // 像素化繪製函數
-        const drawPixel = (x, y, color) => {
-            ctx.fillStyle = color;
-            ctx.fillRect(
-                Math.round(this.x + x * scale), 
-                Math.round(this.y + y * scale), 
-                pixelSize, 
-                pixelSize
-            );
-        };
+        // 水燈底座（木質船體）
+        ctx.fillStyle = '#8B4513';
+        ctx.fillRect(this.x - pixelScale/2, this.y + pixelScale/4, pixelScale, pixelScale/3);
         
-        // 水燈底座 - 像素風格的木船
-        const boatColors = ['#6B4423', '#8B4513', '#A0522D'];
-        for (let y = 8; y <= 12; y++) {
-            for (let x = -8; x <= 8; x++) {
-                if (y === 8 && Math.abs(x) > 6) continue;
-                if (y === 12 && Math.abs(x) > 7) continue;
-                const colorIndex = (x + y) % boatColors.length;
-                drawPixel(x, y, boatColors[colorIndex]);
-            }
-        }
+        // 蠟燭主體
+        ctx.fillStyle = '#FFF8DC';
+        ctx.fillRect(this.x - pixelScale/6, this.y - pixelScale/4, pixelScale/3, pixelScale/2);
         
-        // 蠟燭主體 - 像素風格
-        const candleColors = ['#FFF8DC', '#FFFAF0', '#F5F5DC'];
-        for (let y = -2; y <= 6; y++) {
-            for (let x = -2; x <= 2; x++) {
-                const colorIndex = Math.abs(x) % candleColors.length;
-                drawPixel(x, y, candleColors[colorIndex]);
-            }
-        }
+        // 火焰 - 簡化動態效果
+        const flameFlicker = 1 + Math.sin(this.time * 0.1) * 0.1;
+        const flameHeight = (pixelScale/2) * flameFlicker;
         
-        // 火焰 - 動態像素風格
-        const flameTime = this.time * 0.1;
-        const flameOffset = Math.sin(flameTime) * 0.5;
+        // 外層火焰
+        ctx.fillStyle = '#FF6B35';
+        ctx.fillRect(this.x - pixelScale/8, this.y - pixelScale/2 - flameHeight, pixelScale/4, flameHeight);
         
-        // 火焰外層（紅橙色）
-        for (let y = -12; y <= -4; y++) {
-            for (let x = -2; x <= 2; x++) {
-                if (Math.abs(x) + Math.abs(y + 8) > 4) continue;
-                const flicker = Math.sin(flameTime + x * 0.5 + y * 0.3) * 0.1;
-                drawPixel(x + flicker, y + flameOffset, '#FF4500');
-            }
-        }
-        
-        // 火焰內層（黃色）
-        for (let y = -10; y <= -5; y++) {
-            for (let x = -1; x <= 1; x++) {
-                if (Math.abs(x) + Math.abs(y + 7) > 2) continue;
-                const flicker = Math.sin(flameTime * 1.2 + x + y) * 0.2;
-                drawPixel(x + flicker, y + flameOffset, '#FFD700');
-            }
-        }
-        
-        // 火焰核心（白色）
-        const coreFlicker = Math.sin(flameTime * 2) * 0.3;
-        drawPixel(coreFlicker, -8 + flameOffset, '#FFFACD');
+        // 內層火焰
+        ctx.fillStyle = '#FFD700';
+        ctx.fillRect(this.x - pixelScale/12, this.y - pixelScale/2 - flameHeight*0.8, pixelScale/6, flameHeight*0.8);
         
         // 火焰光暈
         ctx.globalAlpha *= 0.4;
-        const glowRadius = 6 * scale;
         ctx.fillStyle = '#FFA500';
         ctx.beginPath();
-        ctx.arc(this.x, this.y - 8 * scale, glowRadius, 0, Math.PI * 2);
+        ctx.arc(this.x, this.y - pixelScale/2, pixelScale/3, 0, Math.PI * 2);
         ctx.fill();
         
-        // 水面倒影 - 像素風格
-        ctx.globalAlpha *= 0.3;
-        for (let y = 14; y <= 18; y++) {
-            for (let x = -1; x <= 1; x++) {
-                const waveOffset = Math.sin(this.time * 0.05 + x) * 0.5;
-                drawPixel(x + waveOffset, y, '#FFD700');
-            }
-        }
-        ctx.globalAlpha = alpha;
+        // 水面倒影
+        ctx.globalAlpha *= 0.5;
+        ctx.fillStyle = '#FFD700';
+        ctx.fillRect(this.x - pixelScale/8, this.y + pixelScale/2, pixelScale/4, pixelScale/4);
     }
 
     isNear(mouseX, mouseY, distance = 30) {
