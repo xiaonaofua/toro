@@ -319,9 +319,8 @@ class WaterLanternApp {
         document.addEventListener('touchstart', enableAudio, { once: true });
         
         this.addButton.addEventListener('click', () => {
-            this.isAddingMode = true;
             this.addForm.style.display = 'block';
-            this.canvas.style.cursor = 'crosshair';
+            this.messageInput.focus(); // 自動聚焦到輸入框
         });
         
         // 添加取消和確認按鈕的事件監聽器
@@ -511,6 +510,12 @@ class WaterLanternApp {
         this.addForm.style.display = 'none';
         this.messageInput.value = '';
         this.canvas.style.cursor = 'default';
+        
+        // 移除瞄準提示
+        const aimingHint = document.getElementById('aimingHint');
+        if (aimingHint && aimingHint.parentNode) {
+            aimingHint.parentNode.removeChild(aimingHint);
+        }
     }
     
     cancelAdd() {
@@ -518,6 +523,12 @@ class WaterLanternApp {
         this.addForm.style.display = 'none';
         this.messageInput.value = '';
         this.canvas.style.cursor = 'default';
+        
+        // 移除瞄準提示（如果存在）
+        const aimingHint = document.getElementById('aimingHint');
+        if (aimingHint && aimingHint.parentNode) {
+            aimingHint.parentNode.removeChild(aimingHint);
+        }
     }
     
     confirmAdd() {
@@ -527,9 +538,47 @@ class WaterLanternApp {
             return;
         }
         
-        // 提示用戶點擊湖面選擇位置
-        alert('現在點擊湖面選擇水燈位置');
-        // isAddingMode 保持為 true，等待用戶點擊湖面
+        // 隱藏表單，進入瞄準模式
+        this.addForm.style.display = 'none';
+        this.canvas.style.cursor = 'crosshair';
+        
+        // 顯示瞄準提示
+        this.showAimingHint();
+    }
+    
+    showAimingHint() {
+        // 創建瞄準提示元素（如果不存在）
+        let aimingHint = document.getElementById('aimingHint');
+        if (!aimingHint) {
+            aimingHint = document.createElement('div');
+            aimingHint.id = 'aimingHint';
+            aimingHint.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: rgba(255, 193, 7, 0.95);
+                color: #856404;
+                padding: 15px 25px;
+                border-radius: 8px;
+                font-size: 16px;
+                font-weight: bold;
+                z-index: 1001;
+                pointer-events: none;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                text-align: center;
+                animation: fadeInOut 3s ease-in-out;
+            `;
+            aimingHint.innerHTML = '🎯 點擊湖面放置水燈';
+            document.body.appendChild(aimingHint);
+            
+            // 3秒後自動隱藏
+            setTimeout(() => {
+                if (aimingHint && aimingHint.parentNode) {
+                    aimingHint.parentNode.removeChild(aimingHint);
+                }
+            }, 3000);
+        }
     }
 
     handleMouseMove(x, y) {
