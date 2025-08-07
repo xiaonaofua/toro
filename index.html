@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>燈籠流水 - 放水灯（GitHub Pages + Supabase版）</title>
     <style>
         body {
@@ -11,11 +11,13 @@
             background-color: #1a1a2e;
             overflow: hidden;
             font-family: 'Courier New', monospace;
+            touch-action: manipulation;
         }
         
         #canvas {
             display: block;
             cursor: crosshair;
+            touch-action: none;
         }
         
         #tooltip {
@@ -47,22 +49,28 @@
         }
         
         #addLanternForm {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(255, 255, 255, 0.9);
-            padding: 15px;
-            border-radius: 8px;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 12px;
             display: none;
             z-index: 1000;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            width: 90%;
+            max-width: 320px;
         }
         
         #addLanternForm input, #addLanternForm textarea {
-            width: 200px;
-            margin: 5px 0;
-            padding: 5px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
+            width: 100%;
+            box-sizing: border-box;
+            margin: 8px 0;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
         }
         
         #addLanternForm textarea {
@@ -74,10 +82,12 @@
             background: #4a90e2;
             color: white;
             border: none;
-            padding: 8px 15px;
-            border-radius: 4px;
+            padding: 12px 20px;
+            border-radius: 6px;
             cursor: pointer;
-            margin: 5px;
+            margin: 8px 5px;
+            font-size: 16px;
+            min-height: 44px;
         }
         
         #addLanternForm button:hover {
@@ -85,16 +95,18 @@
         }
         
         #addButton {
-            position: absolute;
+            position: fixed;
             top: 20px;
             left: 20px;
             background: #e2a04a;
             color: white;
             border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
+            padding: 12px 20px;
+            border-radius: 8px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 16px;
+            min-height: 44px;
+            z-index: 1000;
         }
         
         #addButton:hover {
@@ -102,20 +114,58 @@
         }
 
         #configNotice {
-            position: absolute;
-            top: 70px;
+            position: fixed;
+            top: 80px;
             left: 20px;
-            background: rgba(255, 193, 7, 0.9);
+            right: 20px;
+            background: rgba(255, 193, 7, 0.95);
             color: #856404;
-            padding: 10px 15px;
-            border-radius: 5px;
-            font-size: 12px;
-            max-width: 300px;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
             z-index: 1000;
+            max-width: calc(100vw - 40px);
         }
 
         #configNotice.hidden {
             display: none;
+        }
+        
+        /* 手機版響應式設計 */
+        @media (max-width: 768px) {
+            #tooltip {
+                font-size: 14px;
+                padding: 12px;
+                max-width: 250px;
+            }
+            
+            #addButton {
+                font-size: 14px;
+                padding: 10px 16px;
+            }
+            
+            #configNotice {
+                font-size: 12px;
+                padding: 12px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            #addLanternForm {
+                width: 95%;
+                padding: 15px;
+            }
+            
+            #addLanternForm h3 {
+                margin-top: 0;
+                font-size: 18px;
+            }
+            
+            #tooltip {
+                font-size: 12px;
+                padding: 8px;
+                max-width: 200px;
+            }
         }
     </style>
 </head>

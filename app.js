@@ -67,52 +67,103 @@ class WaterLantern {
     }
 
     draw(ctx) {
-        const scale = 0.4 + this.depth * 1.2;
-        const alpha = 0.7 + this.depth * 0.3;
+        // 近大遠小效果：depth越大，水燈越大越亮
+        const baseScale = 0.3 + this.depth * 0.8;
+        const alpha = 0.6 + this.depth * 0.4;
         
         ctx.save();
         ctx.globalAlpha = alpha;
         
-        // 水燈底座（木質船體）
-        const boatWidth = 16 * scale;
-        const boatHeight = 6 * scale;
-        ctx.fillStyle = '#8B4513';
-        ctx.fillRect(this.x - boatWidth/2, this.y + 2*scale, boatWidth, boatHeight);
+        this.drawPixelLantern(ctx, baseScale);
         
-        // 蠟燭主體
-        const candleWidth = 6 * scale;
-        const candleHeight = 12 * scale;
-        ctx.fillStyle = '#FFF8DC';
-        ctx.fillRect(this.x - candleWidth/2, this.y - candleHeight/2, candleWidth, candleHeight);
-        
-        // 蠟燭火焰
-        const flameHeight = 8 * scale;
-        const flameWidth = 4 * scale;
-        // 外層火焰（橙色）
-        ctx.fillStyle = '#FF6B35';
-        ctx.fillRect(this.x - flameWidth/2, this.y - candleHeight/2 - flameHeight, flameWidth, flameHeight);
-        // 內層火焰（黃色）
-        ctx.fillStyle = '#FFD700';
-        ctx.fillRect(this.x - flameWidth/3, this.y - candleHeight/2 - flameHeight + 2*scale, flameWidth/1.5, flameHeight - 2*scale);
-        
-        // 火焰光暈效果
-        ctx.globalAlpha = 0.3;
-        ctx.fillStyle = '#FFA500';
-        const glowSize = 12 * scale;
-        ctx.fillRect(this.x - glowSize/2, this.y - candleHeight/2 - flameHeight - 2*scale, glowSize, glowSize);
-        
-        // 水面倒影
-        ctx.globalAlpha = 0.2;
-        ctx.fillStyle = '#FFD700';
-        ctx.fillRect(this.x - flameWidth/2, this.y + boatHeight + 2*scale, flameWidth, flameHeight * 0.6);
-        
+        // 水燈編號
         ctx.globalAlpha = 1;
-        ctx.fillStyle = this.depth > 0.5 ? '#000' : '#333';
-        ctx.font = `${Math.max(8, 10 * scale)}px monospace`;
+        ctx.fillStyle = this.depth > 0.5 ? '#000' : '#444';
+        ctx.font = `${Math.max(6, 8 * baseScale)}px monospace`;
         ctx.textAlign = 'center';
-        ctx.fillText(`(${String(this.id).padStart(4, '0')})`, this.x, this.y + boatHeight + 18*scale);
+        const numberY = this.y + (20 * baseScale);
+        ctx.fillText(`(${String(this.id).padStart(4, '0')})`, this.x, numberY);
         
         ctx.restore();
+    }
+    
+    drawPixelLantern(ctx, scale) {
+        const pixelSize = Math.max(1, Math.round(scale));
+        
+        // 像素化繪製函數
+        const drawPixel = (x, y, color) => {
+            ctx.fillStyle = color;
+            ctx.fillRect(
+                Math.round(this.x + x * scale), 
+                Math.round(this.y + y * scale), 
+                pixelSize, 
+                pixelSize
+            );
+        };
+        
+        // 水燈底座 - 像素風格的木船
+        const boatColors = ['#6B4423', '#8B4513', '#A0522D'];
+        for (let y = 8; y <= 12; y++) {
+            for (let x = -8; x <= 8; x++) {
+                if (y === 8 && Math.abs(x) > 6) continue;
+                if (y === 12 && Math.abs(x) > 7) continue;
+                const colorIndex = (x + y) % boatColors.length;
+                drawPixel(x, y, boatColors[colorIndex]);
+            }
+        }
+        
+        // 蠟燭主體 - 像素風格
+        const candleColors = ['#FFF8DC', '#FFFAF0', '#F5F5DC'];
+        for (let y = -2; y <= 6; y++) {
+            for (let x = -2; x <= 2; x++) {
+                const colorIndex = Math.abs(x) % candleColors.length;
+                drawPixel(x, y, candleColors[colorIndex]);
+            }
+        }
+        
+        // 火焰 - 動態像素風格
+        const flameTime = this.time * 0.1;
+        const flameOffset = Math.sin(flameTime) * 0.5;
+        
+        // 火焰外層（紅橙色）
+        for (let y = -12; y <= -4; y++) {
+            for (let x = -2; x <= 2; x++) {
+                if (Math.abs(x) + Math.abs(y + 8) > 4) continue;
+                const flicker = Math.sin(flameTime + x * 0.5 + y * 0.3) * 0.1;
+                drawPixel(x + flicker, y + flameOffset, '#FF4500');
+            }
+        }
+        
+        // 火焰內層（黃色）
+        for (let y = -10; y <= -5; y++) {
+            for (let x = -1; x <= 1; x++) {
+                if (Math.abs(x) + Math.abs(y + 7) > 2) continue;
+                const flicker = Math.sin(flameTime * 1.2 + x + y) * 0.2;
+                drawPixel(x + flicker, y + flameOffset, '#FFD700');
+            }
+        }
+        
+        // 火焰核心（白色）
+        const coreFlicker = Math.sin(flameTime * 2) * 0.3;
+        drawPixel(coreFlicker, -8 + flameOffset, '#FFFACD');
+        
+        // 火焰光暈
+        ctx.globalAlpha *= 0.4;
+        const glowRadius = 6 * scale;
+        ctx.fillStyle = '#FFA500';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y - 8 * scale, glowRadius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // 水面倒影 - 像素風格
+        ctx.globalAlpha *= 0.3;
+        for (let y = 14; y <= 18; y++) {
+            for (let x = -1; x <= 1; x++) {
+                const waveOffset = Math.sin(this.time * 0.05 + x) * 0.5;
+                drawPixel(x + waveOffset, y, '#FFD700');
+            }
+        }
+        ctx.globalAlpha = alpha;
     }
 
     isNear(mouseX, mouseY, distance = 30) {
@@ -154,16 +205,123 @@ class WaterLanternApp {
         this.lakeArea = null;
         this.supabaseEnabled = false;
         
+        // 音效系統
+        this.audioContext = null;
+        this.sounds = {
+            water: null,
+            addLantern: null
+        };
+        this.audioEnabled = false;
+        
         this.init();
     }
 
     async init() {
         this.setupCanvas();
         this.checkConfiguration();
+        this.initAudio();
         this.supabaseEnabled = await initSupabase();
         await this.loadLanterns();
         this.setupEventListeners();
         this.gameLoop();
+    }
+    
+    initAudio() {
+        try {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            this.createWaterSounds();
+            this.audioEnabled = true;
+        } catch (error) {
+            console.log('音頻不支持或被禁用');
+            this.audioEnabled = false;
+        }
+    }
+    
+    createWaterSounds() {
+        // 創建水聲背景音效
+        this.sounds.water = this.createWaterSound();
+        this.sounds.addLantern = this.createLanternSound();
+    }
+    
+    createWaterSound() {
+        if (!this.audioContext) return null;
+        
+        const bufferSize = this.audioContext.sampleRate * 2; // 2秒循環
+        const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+        const channelData = buffer.getChannelData(0);
+        
+        // 生成水聲：低頻率白噪音 + 波浪效果
+        for (let i = 0; i < bufferSize; i++) {
+            const time = i / this.audioContext.sampleRate;
+            const wave1 = Math.sin(time * Math.PI * 0.5) * 0.1;
+            const wave2 = Math.sin(time * Math.PI * 0.3) * 0.05;
+            const noise = (Math.random() - 0.5) * 0.02;
+            channelData[i] = wave1 + wave2 + noise;
+        }
+        
+        return buffer;
+    }
+    
+    createLanternSound() {
+        if (!this.audioContext) return null;
+        
+        const bufferSize = this.audioContext.sampleRate * 0.5; // 0.5秒
+        const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+        const channelData = buffer.getChannelData(0);
+        
+        // 生成水滴聲：短促的鐘聲效果
+        for (let i = 0; i < bufferSize; i++) {
+            const time = i / this.audioContext.sampleRate;
+            const decay = Math.exp(-time * 8);
+            const tone = Math.sin(time * Math.PI * 880) * decay * 0.1; // 880Hz音調
+            const splash = Math.sin(time * Math.PI * 220) * decay * 0.05; // 低頻濺水聲
+            channelData[i] = tone + splash;
+        }
+        
+        return buffer;
+    }
+    
+    playWaterSound() {
+        if (!this.audioEnabled || !this.sounds.water) return;
+        
+        try {
+            const source = this.audioContext.createBufferSource();
+            const gainNode = this.audioContext.createGain();
+            
+            source.buffer = this.sounds.water;
+            source.loop = true;
+            gainNode.gain.value = 0.1; // 很低的背景音量
+            
+            source.connect(gainNode);
+            gainNode.connect(this.audioContext.destination);
+            source.start();
+            
+            // 淡出效果
+            setTimeout(() => {
+                gainNode.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + 1);
+                setTimeout(() => source.stop(), 1000);
+            }, 3000);
+        } catch (error) {
+            console.log('播放水聲失敗');
+        }
+    }
+    
+    playLanternSound() {
+        if (!this.audioEnabled || !this.sounds.addLantern) return;
+        
+        try {
+            const source = this.audioContext.createBufferSource();
+            const gainNode = this.audioContext.createGain();
+            
+            source.buffer = this.sounds.addLantern;
+            gainNode.gain.value = 0.2;
+            
+            source.connect(gainNode);
+            gainNode.connect(this.audioContext.destination);
+            source.start();
+        } catch (error) {
+            console.log('播放水燈音效失敗');
+        }
     }
 
     setupCanvas() {
@@ -190,6 +348,18 @@ class WaterLanternApp {
     }
 
     setupEventListeners() {
+        // 首次點擊時啟動音頻上下文（瀏覽器要求）
+        const enableAudio = () => {
+            if (this.audioContext && this.audioContext.state === 'suspended') {
+                this.audioContext.resume();
+                this.playWaterSound();
+                document.removeEventListener('click', enableAudio);
+                document.removeEventListener('touchstart', enableAudio);
+            }
+        };
+        document.addEventListener('click', enableAudio, { once: true });
+        document.addEventListener('touchstart', enableAudio, { once: true });
+        
         this.addButton.addEventListener('click', () => {
             this.isAddingMode = true;
             this.addForm.style.display = 'block';
@@ -201,9 +371,27 @@ class WaterLanternApp {
                 this.handleAddLantern(e.clientX, e.clientY);
             }
         });
+        
+        // 觸摸事件支持
+        this.canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            if (this.isAddingMode && e.changedTouches.length > 0) {
+                const touch = e.changedTouches[0];
+                this.handleAddLantern(touch.clientX, touch.clientY);
+            }
+        });
 
         this.canvas.addEventListener('mousemove', (e) => {
             this.handleMouseMove(e.clientX, e.clientY);
+        });
+        
+        // 觸摸移動事件
+        this.canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (e.touches.length > 0) {
+                const touch = e.touches[0];
+                this.handleMouseMove(touch.clientX, touch.clientY);
+            }
         });
 
         this.canvas.addEventListener('mouseleave', () => {
@@ -344,6 +532,9 @@ class WaterLanternApp {
             alert('請輸入水燈上的消息！');
             return;
         }
+
+        // 播放水燈添加音效
+        this.playLanternSound();
 
         const lantern = new WaterLantern(this.nextId++, x, y, message);
         this.lanterns.push(lantern);
