@@ -10,13 +10,22 @@ let supabase = null;
 
 async function initSupabase() {
     try {
+        console.log('🔄 開始加載 Supabase CDN...');
         // 從CDN加載Supabase
         const { createClient } = await import('https://cdn.skypack.dev/@supabase/supabase-js@2');
+        
+        console.log('✅ Supabase CDN 加載成功');
+        console.log('🔧 創建 Supabase 客戶端...', {
+            url: SUPABASE_URL,
+            keyLength: SUPABASE_ANON_KEY?.length || 0
+        });
+        
         supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        console.log('Supabase客戶端初始化成功');
+        console.log('✅ Supabase客戶端初始化成功');
         return true;
     } catch (error) {
-        console.warn('無法加載Supabase，將使用本地存儲模式', error);
+        console.error('❌ Supabase 初始化失敗:', error);
+        console.warn('⚠️ 將使用本地存儲模式');
         return false;
     }
 }
@@ -333,6 +342,12 @@ class WaterLanternApp {
         });
 
         this.canvas.addEventListener('click', (e) => {
+            console.log('🖱️ Canvas 點擊事件:', {
+                clientX: e.clientX, 
+                clientY: e.clientY, 
+                isAddingMode: this.isAddingMode
+            });
+            
             if (this.isAddingMode) {
                 this.handleAddLantern(e.clientX, e.clientY);
             }
@@ -488,12 +503,16 @@ class WaterLanternApp {
     }
 
     async handleAddLantern(x, y) {
+        console.log('🎯 handleAddLantern 被調用:', {x, y, isInLake: this.isInLake(x, y)});
+        
         if (!this.isInLake(x, y)) {
             alert('請點擊湖面來放置水燈！');
             return;
         }
 
         const message = this.messageInput.value.trim();
+        console.log('💬 消息內容:', message);
+        
         if (!message) {
             alert('請輸入水燈上的消息！');
             return;
@@ -502,8 +521,12 @@ class WaterLanternApp {
         // 播放水燈添加音效
         this.playLanternSound();
 
+        console.log('🏮 創建新水燈...');
         const lantern = new WaterLantern(this.nextId++, x, y, message);
         this.lanterns.push(lantern);
+        console.log('✅ 水燈已添加到本地數組, 總數:', this.lanterns.length);
+        
+        console.log('📡 開始保存到 Supabase...');
         await this.addSingleLantern(lantern);
         
         this.isAddingMode = false;
@@ -538,7 +561,10 @@ class WaterLanternApp {
             return;
         }
         
-        // 隱藏表單，進入瞄準模式
+        console.log('✅ confirmAdd: 進入瞄準模式, 消息:', message);
+        
+        // 進入瞄準模式
+        this.isAddingMode = true; // 🚨 這是關鍵！
         this.addForm.style.display = 'none';
         this.canvas.style.cursor = 'crosshair';
         

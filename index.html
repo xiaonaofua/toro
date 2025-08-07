@@ -4,6 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>燈籠流水 - 放水灯（GitHub Pages + Supabase版）</title>
+    
+    <!-- 防止 favicon 404 错误 -->
+    <link rel="icon" href="data:,">
+    
+    <!-- SEO 和 PWA 相关 -->
+    <meta name="description" content="互動式水燈許願網頁，點擊湖面添加水燈並寫下願望">
+    <meta name="theme-color" content="#1a1a2e">
     <style>
         body {
             margin: 0;
@@ -209,6 +216,23 @@
         <p style="font-size: 12px; color: #666;">点击湖面选择位置</p>
     </div>
 
-    <script src="app.js"></script>
+    <script>
+        // 添加网络请求错误监控
+        window.addEventListener('error', function(e) {
+            if (e.target !== window) {
+                console.error('🚨 资源加载失败:', {
+                    source: e.target.src || e.target.href || '未知',
+                    tagName: e.target.tagName,
+                    error: e.message || '404 或加载失败'
+                });
+            }
+        }, true);
+        
+        // 监控未处理的Promise错误
+        window.addEventListener('unhandledrejection', function(e) {
+            console.error('🚨 Promise 错误:', e.reason);
+        });
+    </script>
+    <script src="./app.js"></script>
 </body>
 </html>
