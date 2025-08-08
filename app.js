@@ -172,6 +172,22 @@ class WaterLanternApp {
         this.lakeArea = null;
         this.supabaseEnabled = false;
         
+        // 響應式全景系統
+        this.viewport = {
+            x: 0, // 當前視窗偏移
+            y: 0,
+            width: 0,
+            height: 0,
+            worldWidth: 0, // 完整場景寬度
+            worldHeight: 0, // 完整場景高度
+            scale: 1
+        };
+        
+        this.isPortrait = false;
+        this.isDragging = false;
+        this.lastTouchX = 0;
+        this.lastTouchY = 0;
+        
         // 音效系統
         this.audioContext = null;
         this.sounds = {
@@ -292,26 +308,146 @@ class WaterLanternApp {
     }
 
     setupCanvas() {
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
-        
-        this.lakeArea = {
-            x: this.canvas.width * 0.1,
-            y: this.canvas.height * 0.4,
-            width: this.canvas.width * 0.8,
-            height: this.canvas.height * 0.5
-        };
+        this.updateViewport();
+        this.setupDragControls();
         
         window.addEventListener('resize', () => {
-            this.canvas.width = window.innerWidth;
-            this.canvas.height = window.innerHeight;
-            this.lakeArea = {
-                x: this.canvas.width * 0.1,
-                y: this.canvas.height * 0.4,
-                width: this.canvas.width * 0.8,
-                height: this.canvas.height * 0.5
-            };
+            this.updateViewport();
         });
+        
+        window.addEventListener('orientationchange', () => {
+            setTimeout(() => this.updateViewport(), 100);
+        });
+    }
+    
+    updateViewport() {
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+        
+        // 判斷是否為竪屏
+        this.isPortrait = windowHeight > windowWidth;
+        
+        // 設置畫布尺寸
+        this.canvas.width = windowWidth;
+        this.canvas.height = windowHeight;
+        
+        // 設置視窗參數
+        this.viewport.width = windowWidth;
+        this.viewport.height = windowHeight;
+        
+        if (this.isPortrait) {
+            // 竪屏：世界比畫布更寬，可以水平拖拽
+            this.viewport.worldWidth = windowHeight * 1.6; // 16:10 比例
+            this.viewport.worldHeight = windowHeight;
+            this.viewport.scale = windowHeight / 800; // 基準高度 800
+        } else {
+            // 橫屏：正常顯示
+            this.viewport.worldWidth = windowWidth;
+            this.viewport.worldHeight = windowHeight;
+            this.viewport.scale = Math.min(windowWidth / 1280, windowHeight / 800);
+            this.viewport.x = 0; // 重置偏移
+        }
+        
+        // 更新湖面區域（基於世界坐標）
+        this.lakeArea = {
+            x: this.viewport.worldWidth * 0.1,
+            y: this.viewport.worldHeight * 0.6,
+            width: this.viewport.worldWidth * 0.8,
+            height: this.viewport.worldHeight * 0.35
+        };
+        
+        // 更新光標樣式
+        this.updateCanvasCursor();
+    }
+    
+    setupDragControls() {
+        // 鼠標拖拽（桌面）
+        this.canvas.addEventListener('mousedown', (e) => {
+            if (this.isPortrait && !this.isAddingMode) {
+                this.isDragging = true;
+                this.lastTouchX = e.clientX;
+                this.updateCanvasCursor();
+            }
+        });
+        
+        this.canvas.addEventListener('mousemove', (e) => {
+            if (this.isDragging && this.isPortrait) {
+                const deltaX = e.clientX - this.lastTouchX;
+                this.updateViewportOffset(deltaX);
+                this.lastTouchX = e.clientX;
+            } else if (!this.isAddingMode) {
+                this.handleMouseMove(e.clientX, e.clientY);
+            }
+        });
+        
+        this.canvas.addEventListener('mouseup', () => {
+            if (this.isDragging) {
+                this.isDragging = false;
+                this.updateCanvasCursor();
+            }
+        });
+        
+        // 觸摸拖拽（移動設備）
+        this.canvas.addEventListener('touchstart', (e) => {
+            if (this.isPortrait && !this.isAddingMode && e.touches.length === 1) {
+                this.isDragging = true;
+                this.lastTouchX = e.touches[0].clientX;
+                e.preventDefault();
+            }
+        });
+        
+        this.canvas.addEventListener('touchmove', (e) => {
+            if (this.isDragging && e.touches.length === 1) {
+                const deltaX = e.touches[0].clientX - this.lastTouchX;
+                this.updateViewportOffset(deltaX);
+                this.lastTouchX = e.touches[0].clientX;
+                e.preventDefault();
+            } else if (!this.isDragging && !this.isAddingMode && e.touches.length === 1) {
+                const touch = e.touches[0];
+                this.handleMouseMove(touch.clientX, touch.clientY);
+            }
+        });
+        
+        this.canvas.addEventListener('touchend', (e) => {
+            if (this.isDragging) {
+                this.isDragging = false;
+                e.preventDefault();
+                return;
+            }
+            
+            if (this.isAddingMode && e.changedTouches.length === 1) {
+                const touch = e.changedTouches[0];
+                this.handleAddLantern(touch.clientX, touch.clientY);
+                e.preventDefault();
+            }
+        });
+    }
+    
+    updateViewportOffset(deltaX) {
+        if (!this.isPortrait) return;
+        
+        // 更新水平偏移
+        this.viewport.x -= deltaX;
+        
+        // 限制拖拽範圍
+        const maxOffset = this.viewport.worldWidth - this.viewport.width;
+        this.viewport.x = Math.max(0, Math.min(maxOffset, this.viewport.x));
+    }
+    
+    // 坐標轉換：屏幕坐標 -> 世界坐標
+    screenToWorld(screenX, screenY) {
+        return {
+            x: screenX + this.viewport.x,
+            y: screenY + this.viewport.y
+        };
+    }
+    
+    // 坐標轉換：世界坐標 -> 屏幕坐標  
+    worldToScreen(worldX, worldY) {
+        return {
+            x: worldX - this.viewport.x,
+            y: worldY - this.viewport.y
+        };
     }
 
     setupEventListeners() {
@@ -345,38 +481,20 @@ class WaterLanternApp {
             console.log('🖱️ Canvas 點擊事件:', {
                 clientX: e.clientX, 
                 clientY: e.clientY, 
-                isAddingMode: this.isAddingMode
+                isAddingMode: this.isAddingMode,
+                isDragging: this.isDragging
             });
             
-            if (this.isAddingMode) {
+            // 只有在不是拖拽狀態下才處理點擊
+            if (this.isAddingMode && !this.isDragging) {
                 this.handleAddLantern(e.clientX, e.clientY);
-            }
-        });
-        
-        // 觸摸事件支持
-        this.canvas.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            if (this.isAddingMode && e.changedTouches.length > 0) {
-                const touch = e.changedTouches[0];
-                this.handleAddLantern(touch.clientX, touch.clientY);
-            }
-        });
-
-        this.canvas.addEventListener('mousemove', (e) => {
-            this.handleMouseMove(e.clientX, e.clientY);
-        });
-        
-        // 觸摸移動事件
-        this.canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            if (e.touches.length > 0) {
-                const touch = e.touches[0];
-                this.handleMouseMove(touch.clientX, touch.clientY);
             }
         });
 
         this.canvas.addEventListener('mouseleave', () => {
             this.hideTooltip();
+            this.isDragging = false; // 重置拖拽狀態
+            this.updateCanvasCursor();
         });
     }
 
@@ -399,27 +517,36 @@ class WaterLanternApp {
     }
 
     drawBackground() {
+        // 清除畫布
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        // 保存畫布狀態並應用視窗變換
+        this.ctx.save();
+        this.ctx.translate(-this.viewport.x, -this.viewport.y);
+        
         // 漸變天空背景
-        const skyGradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height * 0.4);
+        const skyGradient = this.ctx.createLinearGradient(0, 0, 0, this.viewport.worldHeight * 0.4);
         skyGradient.addColorStop(0, '#1a1a3e');
         skyGradient.addColorStop(0.7, '#2c3e60');
         skyGradient.addColorStop(1, '#34495e');
         
         this.ctx.fillStyle = skyGradient;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height * 0.35);
+        this.ctx.fillRect(0, 0, this.viewport.worldWidth, this.viewport.worldHeight * 0.35);
 
         this.drawMountains();
         this.drawLake();
+        
+        this.ctx.restore();
     }
 
     drawMountains() {
-        const baselineY = this.canvas.height * 0.35;
+        const baselineY = this.viewport.worldHeight * 0.35;
         
-        // 主富士山形狀
+        // 主富士山形狀（基於世界坐標）
         const mainPeak = {
-            x: this.canvas.width * 0.3,
-            height: this.canvas.height * 0.28,
-            width: this.canvas.width * 0.4
+            x: this.viewport.worldWidth * 0.3,
+            height: this.viewport.worldHeight * 0.28,
+            width: this.viewport.worldWidth * 0.4
         };
         
         // 繪製主山峰（類似富士山）
@@ -444,26 +571,26 @@ class WaterLanternApp {
         this.ctx.fillStyle = '#243342';
         this.ctx.beginPath();
         this.ctx.moveTo(0, baselineY);
-        this.ctx.lineTo(this.canvas.width * 0.15, baselineY - this.canvas.height * 0.15);
-        this.ctx.lineTo(this.canvas.width * 0.25, baselineY);
+        this.ctx.lineTo(this.viewport.worldWidth * 0.15, baselineY - this.viewport.worldHeight * 0.15);
+        this.ctx.lineTo(this.viewport.worldWidth * 0.25, baselineY);
         this.ctx.closePath();
         this.ctx.fill();
         
-        // 右側山峰群
+        // 右側山峰群（基於世界坐標）
         const rightPeaks = [
-            { x: this.canvas.width * 0.6, height: this.canvas.height * 0.18 },
-            { x: this.canvas.width * 0.75, height: this.canvas.height * 0.22 },
-            { x: this.canvas.width * 0.9, height: this.canvas.height * 0.16 }
+            { x: this.viewport.worldWidth * 0.6, height: this.viewport.worldHeight * 0.18 },
+            { x: this.viewport.worldWidth * 0.75, height: this.viewport.worldHeight * 0.22 },
+            { x: this.viewport.worldWidth * 0.9, height: this.viewport.worldHeight * 0.16 }
         ];
         
         this.ctx.fillStyle = '#2c3e50';
         this.ctx.beginPath();
-        this.ctx.moveTo(this.canvas.width * 0.55, baselineY);
+        this.ctx.moveTo(this.viewport.worldWidth * 0.55, baselineY);
         rightPeaks.forEach(peak => {
             this.ctx.lineTo(peak.x, baselineY - peak.height);
         });
-        this.ctx.lineTo(this.canvas.width, baselineY - this.canvas.height * 0.1);
-        this.ctx.lineTo(this.canvas.width, baselineY);
+        this.ctx.lineTo(this.viewport.worldWidth, baselineY - this.viewport.worldHeight * 0.1);
+        this.ctx.lineTo(this.viewport.worldWidth, baselineY);
         this.ctx.closePath();
         this.ctx.fill();
         
@@ -497,15 +624,17 @@ class WaterLanternApp {
         }
     }
 
-    isInLake(x, y) {
-        return x >= this.lakeArea.x && x <= this.lakeArea.x + this.lakeArea.width &&
-               y >= this.lakeArea.y && y <= this.lakeArea.y + this.lakeArea.height;
+    isInLake(screenX, screenY) {
+        // 轉換為世界坐標
+        const world = this.screenToWorld(screenX, screenY);
+        return world.x >= this.lakeArea.x && world.x <= this.lakeArea.x + this.lakeArea.width &&
+               world.y >= this.lakeArea.y && world.y <= this.lakeArea.y + this.lakeArea.height;
     }
 
-    async handleAddLantern(x, y) {
-        console.log('🎯 handleAddLantern 被調用:', {x, y, isInLake: this.isInLake(x, y)});
+    async handleAddLantern(screenX, screenY) {
+        console.log('🎯 handleAddLantern 被調用:', {screenX, screenY, isInLake: this.isInLake(screenX, screenY)});
         
-        if (!this.isInLake(x, y)) {
+        if (!this.isInLake(screenX, screenY)) {
             alert('請點擊湖面來放置水燈！');
             return;
         }
@@ -521,8 +650,10 @@ class WaterLanternApp {
         // 播放水燈添加音效
         this.playLanternSound();
 
-        console.log('🏮 創建新水燈...');
-        const lantern = new WaterLantern(this.nextId++, x, y, message);
+        // 轉換為世界坐標來創建水燈
+        const worldPos = this.screenToWorld(screenX, screenY);
+        console.log('🏮 創建新水燈...', {世界坐標: worldPos});
+        const lantern = new WaterLantern(this.nextId++, worldPos.x, worldPos.y, message);
         this.lanterns.push(lantern);
         console.log('✅ 水燈已添加到本地數組, 總數:', this.lanterns.length);
         
@@ -532,7 +663,8 @@ class WaterLanternApp {
         this.isAddingMode = false;
         this.addForm.style.display = 'none';
         this.messageInput.value = '';
-        this.canvas.style.cursor = 'default';
+        this.updateCanvasCursor();
+        this.canvas.classList.remove('adding-mode');
         
         // 移除瞄準提示
         const aimingHint = document.getElementById('aimingHint');
@@ -545,7 +677,8 @@ class WaterLanternApp {
         this.isAddingMode = false;
         this.addForm.style.display = 'none';
         this.messageInput.value = '';
-        this.canvas.style.cursor = 'default';
+        this.updateCanvasCursor();
+        this.canvas.classList.remove('adding-mode');
         
         // 移除瞄準提示（如果存在）
         const aimingHint = document.getElementById('aimingHint');
@@ -567,6 +700,7 @@ class WaterLanternApp {
         this.isAddingMode = true; // 🚨 這是關鍵！
         this.addForm.style.display = 'none';
         this.canvas.style.cursor = 'crosshair';
+        this.canvas.classList.add('adding-mode');
         
         // 顯示瞄準提示
         this.showAimingHint();
@@ -638,23 +772,36 @@ class WaterLanternApp {
         }, 2000);
     }
 
-    handleMouseMove(x, y) {
-        if (this.isAddingMode) return;
+    handleMouseMove(screenX, screenY) {
+        if (this.isAddingMode || this.isDragging) return;
 
-        const nearbyLantern = this.lanterns.find(lantern => lantern.isNear(x, y));
+        // 轉換為世界坐標進行檢測
+        const worldPos = this.screenToWorld(screenX, screenY);
         
-        if (nearbyLantern) {
-            this.showTooltip(x, y, nearbyLantern.message);
+        let hoveredLantern = null;
+        for (let lantern of this.lanterns) {
+            if (lantern.isNear(worldPos.x, worldPos.y)) {
+                hoveredLantern = lantern;
+                break;
+            }
+        }
+        
+        if (hoveredLantern) {
+            this.showTooltip(screenX, screenY, hoveredLantern.message, hoveredLantern.id);
         } else {
             this.hideTooltip();
         }
     }
 
-    showTooltip(x, y, message) {
+    showTooltip(x, y, message, id) {
         this.tooltip.style.display = 'block';
         this.tooltip.style.left = (x + 15) + 'px';
         this.tooltip.style.top = (y - 40) + 'px';
-        this.tooltip.textContent = message;
+        if (id) {
+            this.tooltip.innerHTML = `<strong>(${String(id).padStart(4, '0')})</strong><br>${message}`;
+        } else {
+            this.tooltip.textContent = message;
+        }
     }
 
     hideTooltip() {
@@ -662,7 +809,25 @@ class WaterLanternApp {
     }
 
     async saveLanterns() {
-        const lanternData = this.lanterns.map(l => l.toSaveData());
+        const lanternData = this.lanterns.map(l => {
+            const data = l.toSaveData();
+            // 确保字段名与数据库匹配（使用引号）
+            return {
+                "id": data.id,
+                "baseX": data.baseX,
+                "baseY": data.baseY,
+                "message": data.message,
+                "angle": data.angle,
+                "floatSpeed": data.floatSpeed,
+                "bobAmount": data.bobAmount,
+                "driftSpeed": data.driftSpeed,
+                "driftAngle": data.driftAngle,
+                "time": data.time,
+                "rotationSpeed": data.rotationSpeed,
+                "depth": data.depth,
+                "timestamp": data.timestamp
+            };
+        });
         
         if (this.supabaseEnabled && supabase) {
             try {
@@ -698,19 +863,19 @@ class WaterLanternApp {
                 const lanternData = lantern.toSaveData();
                 console.log('發送到Supabase的數據:', lanternData);
                 
-                // 清理和驗證數據
+                // 清理和驗證數據（使用引号确保与数据库字段名匹配）
                 const cleanData = {
-                    baseX: Number(lanternData.baseX) || 0,
-                    baseY: Number(lanternData.baseY) || 0,
-                    message: String(lanternData.message || '').substring(0, 140),
-                    angle: Number(lanternData.angle) || 0,
-                    floatSpeed: Number(lanternData.floatSpeed) || 0.03,
-                    bobAmount: Number(lanternData.bobAmount) || 3,
-                    driftSpeed: Number(lanternData.driftSpeed) || 0.15,
-                    driftAngle: Number(lanternData.driftAngle) || 0,
-                    time: Number(lanternData.time) || 0,
-                    rotationSpeed: Number(lanternData.rotationSpeed) || 0,
-                    depth: Number(lanternData.depth) || 0.5
+                    "baseX": Number(lanternData.baseX) || 0,
+                    "baseY": Number(lanternData.baseY) || 0,
+                    "message": String(lanternData.message || '').substring(0, 140),
+                    "angle": Number(lanternData.angle) || 0,
+                    "floatSpeed": Number(lanternData.floatSpeed) || 0.03,
+                    "bobAmount": Number(lanternData.bobAmount) || 3,
+                    "driftSpeed": Number(lanternData.driftSpeed) || 0.15,
+                    "driftAngle": Number(lanternData.driftAngle) || 0,
+                    "time": Number(lanternData.time) || 0,
+                    "rotationSpeed": Number(lanternData.rotationSpeed) || 0,
+                    "depth": Number(lanternData.depth) || 0.5
                     // 不包含 id 和 timestamp，讓數據庫自動生成
                 };
                 
@@ -753,13 +918,30 @@ class WaterLanternApp {
             try {
                 const { data, error } = await supabase
                     .from('water_lanterns')
-                    .select('*')
+                    .select(`
+                        id,
+                        "baseX",
+                        "baseY", 
+                        message,
+                        angle,
+                        "floatSpeed",
+                        "bobAmount",
+                        "driftSpeed", 
+                        "driftAngle",
+                        time,
+                        "rotationSpeed",
+                        depth,
+                        timestamp
+                    `)
                     .order('id', { ascending: true });
 
                 if (!error && data && data.length > 0) {
                     console.log('從Supabase加載水燈數據:', data.length + '個');
                     data.forEach(item => {
-                        const lantern = new WaterLantern(item.id, item.baseX, item.baseY, item.message, item);
+                        // 兼容不同的字段命名格式
+                        const x = item.baseX || item.basex || 0;
+                        const y = item.baseY || item.basey || 0;
+                        const lantern = new WaterLantern(item.id, x, y, item.message, item);
                         this.lanterns.push(lantern);
                         this.nextId = Math.max(this.nextId, item.id + 1);
                     });
@@ -779,7 +961,10 @@ class WaterLanternApp {
                     const data = JSON.parse(saved);
                     console.log('從本地存儲加載水燈數據:', data.length + '個');
                     data.forEach(item => {
-                        const lantern = new WaterLantern(item.id, item.baseX || item.x, item.baseY || item.y, item.message, item);
+                        // 兼容多种字段命名格式
+                        const x = item.baseX || item.basex || item.x || 0;
+                        const y = item.baseY || item.basey || item.y || 0;
+                        const lantern = new WaterLantern(item.id, x, y, item.message, item);
                         this.lanterns.push(lantern);
                         this.nextId = Math.max(this.nextId, item.id + 1);
                     });
@@ -824,12 +1009,28 @@ class WaterLanternApp {
     gameLoop() {
         this.drawBackground();
         
+        // 應用視窗變換來繪製水燈
+        this.ctx.save();
+        this.ctx.translate(-this.viewport.x, -this.viewport.y);
+        
         this.lanterns.sort((a, b) => a.depth - b.depth);
         
         this.lanterns.forEach(lantern => {
-            lantern.update();
-            lantern.draw(this.ctx);
+            // 只繪製在可見範圍內的水燈
+            const screenPos = this.worldToScreen(lantern.x, lantern.y);
+            if (screenPos.x > -50 && screenPos.x < this.viewport.width + 50 && 
+                screenPos.y > -50 && screenPos.y < this.viewport.height + 50) {
+                lantern.update();
+                lantern.draw(this.ctx);
+            }
         });
+        
+        this.ctx.restore();
+        
+        // 繪製拖拽提示（竪屏時）
+        if (this.isPortrait) {
+            this.drawPanHint();
+        }
         
         if (this.frameCount % 300 === 0) {
             this.saveLanterns();
@@ -837,6 +1038,44 @@ class WaterLanternApp {
         this.frameCount = (this.frameCount || 0) + 1;
 
         requestAnimationFrame(() => this.gameLoop());
+    }
+    
+    drawPanHint() {
+        // 竪屏時顯示拖拽提示
+        if (!this.isDragging) {
+            this.ctx.save();
+            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            this.ctx.font = '14px monospace';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText('← 拖拽查看完整景色 →', this.viewport.width / 2, this.viewport.height - 30);
+            
+            // 滾動條指示器
+            const scrollBarWidth = this.viewport.width - 40;
+            const scrollProgress = this.viewport.x / (this.viewport.worldWidth - this.viewport.width);
+            
+            // 滾動條背景
+            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            this.ctx.fillRect(20, this.viewport.height - 15, scrollBarWidth, 4);
+            
+            // 滾動條位置指示器
+            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            const indicatorX = 20 + scrollProgress * scrollBarWidth;
+            this.ctx.fillRect(indicatorX - 10, this.viewport.height - 17, 20, 8);
+            
+            this.ctx.restore();
+        }
+    }
+    
+    updateCanvasCursor() {
+        if (this.isAddingMode) {
+            this.canvas.style.cursor = 'crosshair';
+        } else if (this.isPortrait && !this.isDragging) {
+            this.canvas.style.cursor = 'grab';
+        } else if (this.isDragging) {
+            this.canvas.style.cursor = 'grabbing';  
+        } else {
+            this.canvas.style.cursor = 'default';
+        }
     }
 }
 
