@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌊 簡單測試版</title>
+    <style>
+        body { margin: 0; padding: 0; background: #000; overflow: hidden; font-family: Arial, sans-serif; }
+        #canvas { 
+            width: 100vw; height: 100vh; display: block; outline: none; 
+            touch-action: none;
+        }
+        #info {
+            position: fixed; top: 15px; left: 15px; color: white;
+            background: rgba(0,0,0,0.8); padding: 15px; border-radius: 8px;
+            font-size: 13px; z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div id="info">
+        <div><strong>🌊 簡單測試版</strong></div>
+        <div>狀態: <span id="status">初始化中...</span></div>
+        <div>版本: <span id="version">--</span></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/babylonjs@6.0.0/babylon.js"></script>
+    <script>
+        let engine, scene, camera;
+        
+        function updateStatus(text) {
+            document.getElementById('status').textContent = text;
+            console.log('📊 狀態: ' + text);
+        }
+        
+        function updateVersion() {
+            if (BABYLON && BABYLON.Engine && BABYLON.Engine.Version) {
+                document.getElementById('version').textContent = BABYLON.Engine.Version;
+            }
+        }
+
+        async function init() {
+            try {
+                updateStatus('檢查環境...');
+                console.log('🔍 BABYLON 對象:', typeof BABYLON);
+                console.log('🔍 ArcRotateCamera:', typeof BABYLON.ArcRotateCamera);
+                updateVersion();
+                
+                updateStatus('創建引擎...');
+                const canvas = document.getElementById('canvas');
+                engine = new BABYLON.Engine(canvas, true);
+                console.log('✅ 引擎創建成功');
+                
+                updateStatus('創建場景...');
+                scene = new BABYLON.Scene(engine);
+                scene.clearColor = new BABYLON.Color3(0.1, 0.15, 0.2);
+                console.log('✅ 場景創建成功');
+                
+                updateStatus('設置相機...');
+                // 使用正確的 Babylon.js v6.0.0 API
+                camera = new BABYLON.ArcRotateCamera(
+                    "camera", 
+                    0,                       // alpha
+                    Math.PI / 3,            // beta
+                    30,                     // radius
+                    BABYLON.Vector3.Zero(), // target
+                    scene                   // scene (必須)
+                );
+                
+                // 設置為活動相機
+                scene.activeCamera = camera;
+                
+                // 使用正確的 attachControl 方法
+                camera.attachControl(canvas, false);
+                console.log('✅ 相機控制附加成功');
+                
+                updateStatus('添加光照...');
+                const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+                light.intensity = 0.7;
+                console.log('✅ 光照添加成功');
+                
+                updateStatus('創建物體...');
+                // 創建一個簡單的水面
+                const ground = BABYLON.MeshBuilder.CreateGround("ground", {width: 50, height: 50}, scene);
+                const groundMat = new BABYLON.StandardMaterial("groundMat", scene);
+                groundMat.diffuseColor = new BABYLON.Color3(0.2, 0.4, 0.6);
+                groundMat.alpha = 0.8;
+                ground.material = groundMat;
+                
+                // 創建幾個測試水燈
+                for (let i = 0; i < 5; i++) {
+                    const sphere = BABYLON.MeshBuilder.CreateSphere(`sphere${i}`, {diameter: 2}, scene);
+                    sphere.position.x = (Math.random() - 0.5) * 20;
+                    sphere.position.y = 1;
+                    sphere.position.z = (Math.random() - 0.5) * 20;
+                    
+                    const mat = new BABYLON.StandardMaterial(`mat${i}`, scene);
+                    mat.diffuseColor = new BABYLON.Color3(1, 0.8, 0.4);
+                    mat.emissiveColor = new BABYLON.Color3(0.3, 0.2, 0.1);
+                    sphere.material = mat;
+                    
+                    // 簡單動畫
+                    const startTime = Math.random() * 1000;
+                    scene.registerBeforeRender(() => {
+                        sphere.position.y = 1 + Math.sin(Date.now() * 0.002 + startTime) * 0.3;
+                        sphere.rotation.y += 0.005;
+                    });
+                }
+                console.log('✅ 測試物體創建成功');
+                
+                updateStatus('啟動渲染...');
+                engine.runRenderLoop(() => {
+                    scene.render();
+                });
+                
+                // 響應式
+                window.addEventListener('resize', () => {
+                    engine.resize();
+                });
+                
+                updateStatus('運行中 ✅');
+                console.log('🎉 簡單測試版啟動成功！');
+                
+            } catch (error) {
+                updateStatus('失敗 ❌');
+                console.error('❌ 初始化失敗:', error);
+                console.error('錯誤堆棧:', error.stack);
+                
+                // 顯示錯誤
+                const errorDiv = document.createElement('div');
+                errorDiv.style.cssText = `
+                    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                    background: rgba(255, 0, 0, 0.9); color: white; padding: 20px;
+                    border-radius: 10px; z-index: 1000; max-width: 80%;
+                `;
+                errorDiv.innerHTML = `
+                    <h3>❌ 初始化失敗</h3>
+                    <p><strong>錯誤:</strong> ${error.message}</p>
+                    <p><strong>API 版本:</strong> ${BABYLON.Engine ? BABYLON.Engine.Version : 'unknown'}</p>
+                    <button onclick="location.reload()" style="
+                        background: white; color: red; border: none;
+                        padding: 10px 20px; border-radius: 5px; cursor: pointer;
+                        margin-top: 10px;
+                    ">重試</button>
+                `;
+                document.body.appendChild(errorDiv);
+            }
+        }
+        
+        // 啟動
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

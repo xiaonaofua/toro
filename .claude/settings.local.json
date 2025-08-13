@@ -10,7 +10,15 @@
       "Bash(rm:*)",
       "Bash(ls:*)",
       "Bash(mv:*)",
-      "Bash(del:*)"
+      "Bash(del:*)",
+      "Bash(claude mcp add:*)",
+      "WebFetch(domain:context7.ai)",
+      "WebSearch",
+      "Bash(python:*)",
+      "WebFetch(domain:doc.babylonjs.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(dir:*)",
+      "Bash(grep:*)"
     ],
     "deny": []
   }
