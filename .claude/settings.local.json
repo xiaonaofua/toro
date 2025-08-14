@@ -18,8 +18,10 @@
       "WebFetch(domain:doc.babylonjs.com)",
       "WebFetch(domain:github.com)",
       "Bash(dir:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(curl:*)"
     ],
-    "deny": []
+    "deny": [],
+    "defaultMode": "acceptEdits"
   }
 }

@@ -2,278 +2,347 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>燈籠流水 - 放水灯（GitHub Pages + Supabase版）</title>
-    
-    <!-- 防止 favicon 404 错误 -->
-    <link rel="icon" href="data:,">
-    
-    <!-- SEO 和 PWA 相关 -->
-    <meta name="description" content="互動式水燈許願網頁，點擊湖面添加水燈並寫下願望">
-    <meta name="theme-color" content="#1a1a2e">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🏮 水燈祈願 - 選擇體驗版本</title>
     <style>
-        body {
+        * {
             margin: 0;
             padding: 0;
-            background-color: #1a1a2e;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
             overflow: hidden;
-            font-family: 'Courier New', monospace;
-            touch-action: manipulation;
         }
-        
-        #canvas {
-            display: block;
-            cursor: default;
-            touch-action: manipulation;
-            -webkit-touch-callout: none;
-            -webkit-user-select: none;
-            -khtml-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-            user-select: none;
+
+        /* 動態背景效果 */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 30%, rgba(255, 204, 102, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(102, 204, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 60% 20%, rgba(255, 153, 204, 0.1) 0%, transparent 50%);
+            animation: float 20s ease-in-out infinite;
+            z-index: -1;
         }
-        
-        /* 竪屏時的拖拽光標樣式 */
-        @media (orientation: portrait) {
-            #canvas:not(.adding-mode) {
-                cursor: grab;
-            }
-            
-            #canvas:not(.adding-mode):active {
-                cursor: grabbing;
-            }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            33% { transform: translateY(-20px) rotate(1deg); }
+            66% { transform: translateY(-10px) rotate(-1deg); }
         }
-        
-        #tooltip {
-            position: absolute;
-            background: rgba(255, 255, 255, 0.95);
-            border: 2px solid #333;
-            border-radius: 8px;
-            padding: 10px;
-            max-width: 200px;
-            font-size: 12px;
-            color: #333;
-            pointer-events: none;
-            display: none;
-            z-index: 1000;
-            word-wrap: break-word;
+
+        .container {
+            text-align: center;
+            max-width: 800px;
+            padding: 40px 20px;
+            position: relative;
+            z-index: 1;
         }
-        
-        #tooltip::before {
+
+        .title {
+            font-size: 3.5em;
+            font-weight: 300;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, #ffcc66, #ff9966, #ff6699);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: 0 4px 20px rgba(255, 204, 102, 0.3);
+            animation: glow 3s ease-in-out infinite alternate;
+        }
+
+        @keyframes glow {
+            from { text-shadow: 0 4px 20px rgba(255, 204, 102, 0.3); }
+            to { text-shadow: 0 4px 40px rgba(255, 204, 102, 0.6); }
+        }
+
+        .subtitle {
+            font-size: 1.3em;
+            margin-bottom: 50px;
+            color: #b8c6db;
+            font-weight: 300;
+            line-height: 1.6;
+        }
+
+        .version-container {
+            display: flex;
+            gap: 40px;
+            justify-content: center;
+            align-items: stretch;
+            flex-wrap: wrap;
+            margin-bottom: 40px;
+        }
+
+        .version-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 40px 30px;
+            width: 300px;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .version-card::before {
             content: '';
             position: absolute;
-            bottom: -8px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 0;
-            height: 0;
-            border-left: 8px solid transparent;
-            border-right: 8px solid transparent;
-            border-top: 8px solid #333;
-        }
-        
-        #addLanternForm {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(255, 255, 255, 0.95);
-            padding: 20px;
-            border-radius: 12px;
-            display: none;
-            z-index: 1000;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-            width: 90%;
-            max-width: 320px;
-        }
-        
-        #addLanternForm input, #addLanternForm textarea {
+            top: 0;
+            left: -100%;
             width: 100%;
-            box-sizing: border-box;
-            margin: 8px 0;
-            padding: 12px;
-            border: 2px solid #ddd;
-            border-radius: 6px;
-            font-size: 16px;
-        }
-        
-        #addLanternForm textarea {
-            height: 60px;
-            resize: none;
-        }
-        
-        #addLanternForm button {
-            background: #4a90e2;
-            color: white;
-            border: none;
-            padding: 12px 20px;
-            border-radius: 6px;
-            cursor: pointer;
-            margin: 8px 5px;
-            font-size: 16px;
-            min-height: 44px;
-        }
-        
-        #addLanternForm button:hover {
-            background: #357abd;
-        }
-        
-        #addButton {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            background: #e2a04a;
-            color: white;
-            border: none;
-            padding: 12px 20px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 16px;
-            min-height: 44px;
-            z-index: 1000;
-        }
-        
-        #addButton:hover {
-            background: #c8893d;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transition: left 0.6s;
         }
 
-        #configNotice {
-            position: fixed;
-            top: 80px;
-            left: 20px;
-            right: 20px;
-            background: rgba(255, 193, 7, 0.95);
-            color: #856404;
-            padding: 15px;
-            border-radius: 8px;
-            font-size: 14px;
-            z-index: 1000;
-            max-width: calc(100vw - 40px);
+        .version-card:hover::before {
+            left: 100%;
         }
 
-        #configNotice.hidden {
-            display: none;
+        .version-card:hover {
+            transform: translateY(-10px) scale(1.02);
+            border-color: rgba(255, 204, 102, 0.5);
+            box-shadow: 
+                0 20px 40px rgba(0, 0, 0, 0.3),
+                0 0 30px rgba(255, 204, 102, 0.2);
         }
-        
-        /* 手機版響應式設計 */
+
+        .version-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+            display: block;
+            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+        }
+
+        .version-title {
+            font-size: 1.8em;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #ffffff;
+        }
+
+        .version-description {
+            color: #b8c6db;
+            line-height: 1.6;
+            margin-bottom: 25px;
+            font-size: 1em;
+        }
+
+        .version-features {
+            list-style: none;
+            text-align: left;
+            margin-bottom: 25px;
+        }
+
+        .version-features li {
+            padding: 5px 0;
+            color: #a8b8c8;
+            font-size: 0.9em;
+        }
+
+        .version-features li::before {
+            content: '✦ ';
+            color: #ffcc66;
+            margin-right: 8px;
+        }
+
+        .start-btn {
+            background: linear-gradient(45deg, #ff6b6b, #feca57);
+            border: none;
+            border-radius: 50px;
+            padding: 15px 30px;
+            color: white;
+            font-weight: 600;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .start-btn:hover {
+            background: linear-gradient(45deg, #ff5252, #ffc107);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(255, 107, 107, 0.4);
+        }
+
+        .version-card.v2d .start-btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+        }
+
+        .version-card.v2d .start-btn:hover {
+            background: linear-gradient(45deg, #5a6fd8, #6a4190);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .info-text {
+            margin-top: 40px;
+            color: #8892b0;
+            font-size: 0.95em;
+            line-height: 1.6;
+        }
+
+        /* 響應式設計 */
         @media (max-width: 768px) {
-            #tooltip {
-                font-size: 14px;
-                padding: 12px;
-                max-width: 250px;
+            .title {
+                font-size: 2.5em;
             }
             
-            #addButton {
-                font-size: 14px;
-                padding: 10px 16px;
+            .version-container {
+                flex-direction: column;
+                align-items: center;
+                gap: 30px;
             }
             
-            #configNotice {
-                font-size: 12px;
-                padding: 12px;
+            .version-card {
+                width: 100%;
+                max-width: 350px;
+            }
+            
+            .container {
+                padding: 30px 15px;
             }
         }
-        
-        @media (max-width: 480px) {
-            #addLanternForm {
-                width: 95%;
-                padding: 15px;
-            }
-            
-            #addLanternForm h3 {
-                margin-top: 0;
-                font-size: 18px;
-            }
-            
-            #tooltip {
-                font-size: 12px;
-                padding: 8px;
-                max-width: 200px;
-            }
+
+        /* 浮動水燈動畫效果 */
+        .floating-lantern {
+            position: fixed;
+            width: 20px;
+            height: 20px;
+            background: radial-gradient(circle, #ffcc66 20%, transparent 70%);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 0;
+            animation: floatUp 15s linear infinite;
+            opacity: 0.6;
         }
-        
-        /* 瞄準提示動畫 */
-        @keyframes fadeInOut {
-            0% { 
-                opacity: 0; 
-                transform: translate(-50%, -50%) scale(0.8); 
+
+        @keyframes floatUp {
+            0% {
+                transform: translateY(100vh) rotate(0deg);
+                opacity: 0;
             }
-            20% { 
-                opacity: 1; 
-                transform: translate(-50%, -50%) scale(1); 
+            10% {
+                opacity: 0.6;
             }
-            80% { 
-                opacity: 1; 
-                transform: translate(-50%, -50%) scale(1); 
+            90% {
+                opacity: 0.6;
             }
-            100% { 
-                opacity: 0; 
-                transform: translate(-50%, -50%) scale(0.8); 
-            }
-        }
-        
-        /* 成功提示动画 */
-        @keyframes successFade {
-            0% { 
-                opacity: 0; 
-                transform: translate(-50%, -50%) scale(0.8); 
-            }
-            15% { 
-                opacity: 1; 
-                transform: translate(-50%, -50%) scale(1.05); 
-            }
-            25% { 
-                opacity: 1; 
-                transform: translate(-50%, -50%) scale(1); 
-            }
-            85% { 
-                opacity: 1; 
-                transform: translate(-50%, -50%) scale(1); 
-            }
-            100% { 
-                opacity: 0; 
-                transform: translate(-50%, -50%) scale(0.9); 
+            100% {
+                transform: translateY(-100px) rotate(360deg);
+                opacity: 0;
             }
         }
     </style>
 </head>
 <body>
-    <canvas id="canvas"></canvas>
-    <div id="tooltip"></div>
-    
-    <button id="addButton">添加水灯</button>
-    
-    <div id="configNotice" style="display: none;">
-        ⚠️ 請先在 app.js 中配置您的 Supabase URL 和 API Key
-        <br><small>配置後將自動隱藏此提示</small>
-    </div>
-    
-    <div id="addLanternForm">
-        <h3>添加水灯</h3>
-        <input type="text" id="messageInput" placeholder="请输入140字内的消息..." maxlength="140">
-        <br>
-        <button id="cancelButton">取消</button>
-        <button id="confirmButton">确认添加</button>
-        <p style="font-size: 12px; color: #666;">点击湖面选择位置</p>
+    <div class="container">
+        <h1 class="title">🏮 水燈祈願</h1>
+        <p class="subtitle">在寧靜的湖面上放下心願，讓溫暖的燈光帶走你的祈福</p>
+        
+        <div class="version-container">
+            <!-- 2D 經典版本 -->
+            <div class="version-card v2d" onclick="selectVersion('2d')">
+                <div class="version-icon">🎨</div>
+                <h3 class="version-title">經典 2D 版本</h3>
+                <p class="version-description">溫馨的手繪風格，專注於許願的純粹體驗</p>
+                <ul class="version-features">
+                    <li>經典 Canvas 2D 繪圖</li>
+                    <li>輕量快速，相容性佳</li>
+                    <li>溫馨手繪風格</li>
+                    <li>專注許願體驗</li>
+                    <li>支援觸控操作</li>
+                </ul>
+                <button class="start-btn">開始 2D 體驗</button>
+            </div>
+            
+            <!-- 3D 現代版本 -->
+            <div class="version-card v3d" onclick="selectVersion('3d')">
+                <div class="version-icon">🌊</div>
+                <h3 class="version-title">現代 3D 版本</h3>
+                <p class="version-description">沉浸式 3D 體驗，真實的水燈與富士山美景</p>
+                <ul class="version-features">
+                    <li>Babylon.js 3D 引擎</li>
+                    <li>真實水燈與燭光效果</li>
+                    <li>富士山背景美景</li>
+                    <li>昼夜循環系統</li>
+                    <li>自由視角控制</li>
+                </ul>
+                <button class="start-btn">開始 3D 體驗</button>
+            </div>
+        </div>
+        
+        <p class="info-text">
+            💡 <strong>建議：</strong>初次體驗建議選擇 3D 版本，享受完整的視覺盛宴<br>
+            如果設備性能較低或偏好簡約風格，可選擇 2D 經典版本
+        </p>
     </div>
 
     <script>
-        // 添加网络请求错误监控
-        window.addEventListener('error', function(e) {
-            if (e.target !== window) {
-                console.error('🚨 资源加载失败:', {
-                    source: e.target.src || e.target.href || '未知',
-                    tagName: e.target.tagName,
-                    error: e.message || '404 或加载失败'
-                });
+        // 選擇版本
+        function selectVersion(version) {
+            if (version === '2d') {
+                window.location.href = 'index-2d.html';
+            } else if (version === '3d') {
+                window.location.href = 'index-3d.html';
             }
-        }, true);
+        }
+
+        // 創建浮動水燈效果
+        function createFloatingLantern() {
+            const lantern = document.createElement('div');
+            lantern.className = 'floating-lantern';
+            lantern.style.left = Math.random() * window.innerWidth + 'px';
+            lantern.style.animationDelay = Math.random() * 2 + 's';
+            lantern.style.animationDuration = (12 + Math.random() * 6) + 's';
+            
+            // 隨機顏色
+            const colors = ['#ffcc66', '#ff9966', '#66ccff', '#ff6699', '#99ff66'];
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            lantern.style.background = `radial-gradient(circle, ${color} 20%, transparent 70%)`;
+            
+            document.body.appendChild(lantern);
+            
+            // 動畫結束後移除
+            setTimeout(() => {
+                if (document.body.contains(lantern)) {
+                    document.body.removeChild(lantern);
+                }
+            }, 18000);
+        }
+
+        // 定期創建浮動水燈
+        setInterval(createFloatingLantern, 3000);
         
-        // 监控未处理的Promise错误
-        window.addEventListener('unhandledrejection', function(e) {
-            console.error('🚨 Promise 错误:', e.reason);
+        // 初始創建幾個
+        for (let i = 0; i < 5; i++) {
+            setTimeout(createFloatingLantern, i * 600);
+        }
+
+        // 鍵盤快捷鍵
+        document.addEventListener('keydown', (e) => {
+            if (e.key === '2') {
+                selectVersion('2d');
+            } else if (e.key === '3') {
+                selectVersion('3d');
+            }
         });
     </script>
-    <script src="./app.js"></script>
 </body>
 </html>

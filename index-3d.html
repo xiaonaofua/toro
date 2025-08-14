@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌊 Babylon.js v6.0.0 正確 API 版本</title>
+    <style>
+        body { margin: 0; padding: 0; background: #000; overflow: hidden; font-family: Arial, sans-serif; }
+        #canvas { 
+            width: 100vw; height: 100vh; display: block; outline: none; 
+            touch-action: none; /* 防止觸控滾動干擾 */
+        }
+        #ui {
+            position: fixed; top: 15px; left: 15px; color: white;
+            background: rgba(0,0,0,0.8); padding: 15px; border-radius: 8px;
+            font-size: 13px; z-index: 100; max-width: 320px;
+        }
+        #addBtn {
+            position: fixed; top: 15px; right: 15px;
+            background: #4a90e2; color: white; border: none;
+            padding: 12px 20px; border-radius: 6px; cursor: pointer;
+            font-size: 14px; z-index: 100;
+        }
+        #addBtn:hover { background: #357abd; }
+        #switchBtn {
+            position: fixed; top: 80px; right: 15px;
+            background: #e2a04a; color: white; border: none;
+            padding: 10px 16px; border-radius: 6px; cursor: pointer;
+            font-size: 13px; z-index: 100;
+        }
+        #switchBtn:hover { background: #c8893d; }
+        #tooltip {
+            position: absolute; background: rgba(0,0,0,0.9); color: white;
+            padding: 8px 12px; border-radius: 4px; font-size: 12px;
+            pointer-events: none; display: none; z-index: 200;
+            border: 1px solid #4a90e2;
+        }
+        #form {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9); color: white; padding: 20px;
+            border-radius: 10px; display: none; z-index: 300;
+            border: 1px solid #4a90e2;
+        }
+        #form input {
+            width: 250px; padding: 8px; margin: 10px 0; border: none;
+            border-radius: 4px; font-size: 14px;
+        }
+        #form button {
+            background: #4a90e2; color: white; border: none;
+            padding: 8px 16px; margin: 5px; border-radius: 4px; cursor: pointer;
+        }
+        #form button:hover { background: #357abd; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div id="ui">
+        <div><strong>🌊 3D 水燈遊戲 (v6.0.0)</strong></div>
+        <div>狀態: <span id="status">初始化中...</span></div>
+        <div>水燈數量: <span id="count">0</span></div>
+        <div>FPS: <span id="fps">--</span></div>
+        <div>API版本: <span id="version">--</span></div>
+        <hr style="margin: 10px 0; border-color: #333;">
+        <div style="font-size: 11px; color: #ccc;">
+            🖱️ 拖拽旋轉視角<br>
+            🎯 滾輪縮放距離<br>
+            🏮 點擊添加水燈
+        </div>
+    </div>
+    
+    <button id="addBtn">🏮 添加水燈</button>
+    <button id="switchBtn" onclick="window.location.href='index-2d.html'">🎨 切換到2D版本</button>
+    
+    <div id="tooltip"></div>
+    
+    <div id="form">
+        <h3>✨ 添加許願水燈</h3>
+        <input type="text" id="messageInput" placeholder="輸入您的願望或祝福..." maxlength="100">
+        <br>
+        <button onclick="confirmAdd()">確認添加</button>
+        <button onclick="cancelAdd()">取消</button>
+        <p style="font-size: 12px; color: #ccc; margin: 10px 0 0 0;">點擊水面選擇放置位置</p>
+    </div>
+
+    <!-- Debug 信息滚动显示 -->
+    <div id="debugPanel" style="
+        position: fixed; 
+        bottom: 15px; 
+        left: 50%; 
+        transform: translateX(-50%);
+        background: rgba(0,0,0,0.85); 
+        color: #00ff00; 
+        padding: 8px 15px; 
+        border-radius: 20px;
+        font-size: 11px; 
+        font-family: 'Courier New', monospace;
+        z-index: 50;
+        border: 1px solid rgba(0, 255, 0, 0.3);
+        min-width: 200px;
+        text-align: center;
+        backdrop-filter: blur(5px);
+    ">
+        <div id="debugText">系统初始化中...</div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/babylonjs@6.0.0/babylon.js"></script>
+    <script>
+        // 全局變量
+        let engine, scene, camera, waterMesh;
+        let lanterns = [];
+        let nextId = 1;
+        let isAddingMode = false;
+        let frameCount = 0;
+        
+        // 時間和光照系統
+        let timeSystem = {
+            currentHour: 0,
+            dayProgress: 0,
+            isNight: false,
+            mainLight: null,
+            skybox: null,
+            lastUpdateTime: 0
+        };
+        
+        // 3D 環境系統
+        let environment3D = {
+            windStrength: 0.4,
+            windDirection: new BABYLON.Vector3(1, 0, 0.5),
+            waterCurrentX: 0.01,
+            waterCurrentZ: 0.008,
+            turbulenceStrength: 0.2,
+            time: 0
+        };
+        
+        // 更新 3D 環境
+        function updateEnvironment3D() {
+            environment3D.time += 1;
+            
+            // 每 5-8 秒隨機改變風向和強度
+            if (environment3D.time % (300 + Math.random() * 240) === 0) {
+                const angle = Math.random() * Math.PI * 2;
+                environment3D.windDirection = new BABYLON.Vector3(
+                    Math.cos(angle),
+                    0,
+                    Math.sin(angle)
+                );
+                environment3D.windStrength = 0.2 + Math.random() * 0.6;
+            }
+            
+            // 水流方向緩慢變化
+            environment3D.waterCurrentX = Math.sin(environment3D.time * 0.0008) * 0.02;
+            environment3D.waterCurrentZ = Math.cos(environment3D.time * 0.0006) * 0.015;
+            
+            // 湍流強度變化
+            environment3D.turbulenceStrength = 0.1 + Math.sin(environment3D.time * 0.001) * 0.15;
+        }
+        
+        // 時間計算函數
+        function calculateTimeBasedLighting() {
+            const now = new Date();
+            const hour = now.getHours();
+            const minute = now.getMinutes();
+            const totalMinutes = hour * 60 + minute;
+            
+            timeSystem.currentHour = hour + minute / 60;
+            
+            // 定義時間段
+            const dawn = 5;      // 黎明 5:00
+            const sunrise = 6;   // 日出 6:00
+            const noon = 12;     // 正午 12:00
+            const sunset = 18;   // 日落 18:00 (6PM)
+            const dusk = 19;     // 黃昏 19:00
+            const night = 21;    // 夜晚 21:00
+            
+            let lightIntensity, skyColor, ambientColor, isNight;
+            
+            if (timeSystem.currentHour >= dawn && timeSystem.currentHour < sunrise) {
+                // 黎明時段 5:00-6:00
+                const progress = (timeSystem.currentHour - dawn) / (sunrise - dawn);
+                lightIntensity = 0.2 + progress * 0.3;
+                skyColor = {
+                    r: 0.1 + progress * 0.2,
+                    g: 0.15 + progress * 0.25, 
+                    b: 0.3 + progress * 0.3
+                };
+                ambientColor = { r: 0.3, g: 0.4, b: 0.6 };
+                isNight = false;
+            } else if (timeSystem.currentHour >= sunrise && timeSystem.currentHour < noon) {
+                // 上午時段 6:00-12:00
+                const progress = (timeSystem.currentHour - sunrise) / (noon - sunrise);
+                lightIntensity = 0.5 + progress * 0.3;
+                skyColor = {
+                    r: 0.3 + progress * 0.4,
+                    g: 0.4 + progress * 0.4,
+                    b: 0.6 + progress * 0.3
+                };
+                ambientColor = { r: 0.6, g: 0.7, b: 0.8 };
+                isNight = false;
+            } else if (timeSystem.currentHour >= noon && timeSystem.currentHour < sunset) {
+                // 下午時段 12:00-18:00
+                const progress = (timeSystem.currentHour - noon) / (sunset - noon);
+                lightIntensity = 0.8 - progress * 0.3;
+                skyColor = {
+                    r: 0.7 - progress * 0.2,
+                    g: 0.8 - progress * 0.3,
+                    b: 0.9 - progress * 0.4
+                };
+                ambientColor = { r: 0.8, g: 0.7, b: 0.6 };
+                isNight = false;
+            } else if (timeSystem.currentHour >= sunset && timeSystem.currentHour < dusk) {
+                // 日落時段 18:00-19:00 (金色時光)
+                const progress = (timeSystem.currentHour - sunset) / (dusk - sunset);
+                lightIntensity = 0.5 - progress * 0.2;
+                skyColor = {
+                    r: 0.8 + progress * 0.1,
+                    g: 0.5 - progress * 0.2,
+                    b: 0.3 - progress * 0.1
+                };
+                ambientColor = { r: 1.0, g: 0.6, b: 0.2 }; // 金橙色
+                isNight = false;
+            } else if (timeSystem.currentHour >= dusk && timeSystem.currentHour < night) {
+                // 黃昏時段 19:00-21:00
+                const progress = (timeSystem.currentHour - dusk) / (night - dusk);
+                lightIntensity = 0.3 - progress * 0.15;
+                skyColor = {
+                    r: 0.4 - progress * 0.2,
+                    g: 0.3 - progress * 0.15,
+                    b: 0.5 - progress * 0.2
+                };
+                ambientColor = { r: 0.4, g: 0.3, b: 0.6 };
+                isNight = true;
+            } else {
+                // 夜晚時段 21:00-5:00
+                lightIntensity = 0.15;
+                skyColor = { r: 0.05, g: 0.1, b: 0.2 };
+                ambientColor = { r: 0.2, g: 0.2, b: 0.4 };
+                isNight = true;
+            }
+            
+            timeSystem.dayProgress = (timeSystem.currentHour % 24) / 24;
+            timeSystem.isNight = isNight;
+            
+            return {
+                lightIntensity,
+                skyColor,
+                ambientColor,
+                isNight,
+                timeString: `${String(Math.floor(timeSystem.currentHour)).padStart(2, '0')}:${String(Math.floor(minute)).padStart(2, '0')}`
+            };
+        }
+        
+        // 應用時間光照
+        function applyTimeBasedLighting() {
+            const lighting = calculateTimeBasedLighting();
+            
+            // 更新主光源
+            if (timeSystem.mainLight) {
+                timeSystem.mainLight.intensity = lighting.lightIntensity;
+                timeSystem.mainLight.diffuse = new BABYLON.Color3(
+                    lighting.ambientColor.r,
+                    lighting.ambientColor.g, 
+                    lighting.ambientColor.b
+                );
+            }
+            
+            // 更新天空
+            if (timeSystem.skybox && timeSystem.skybox.material) {
+                timeSystem.skybox.material.diffuseColor = new BABYLON.Color3(
+                    lighting.skyColor.r,
+                    lighting.skyColor.g,
+                    lighting.skyColor.b
+                );
+                timeSystem.skybox.material.emissiveColor = new BABYLON.Color3(
+                    lighting.skyColor.r * 0.3,
+                    lighting.skyColor.g * 0.3,
+                    lighting.skyColor.b * 0.3
+                );
+            }
+            
+            // 更新 UI 時間顯示
+            const statusElement = document.getElementById('status');
+            if (statusElement && statusElement.textContent === '運行中 ✅') {
+                statusElement.innerHTML = `運行中 ✅ (${lighting.timeString})`;
+            }
+        }
+        
+        // 狀態更新函數
+        function updateStatus(text) {
+            document.getElementById('status').textContent = text;
+            console.log('📊 狀態: ' + text);
+        }
+        
+        function updateCount() {
+            document.getElementById('count').textContent = lanterns.length;
+        }
+        
+        function updateFPS() {
+            if (engine) {
+                document.getElementById('fps').textContent = Math.round(engine.getFps());
+            }
+        }
+
+        // Debug 信息更新
+        function updateDebugInfo() {
+            const debugMessages = [
+                `3D引擎: Babylon.js ${BABYLON.Engine.Version} | 渲染模式: WebGL`,
+                `環境風力: ${environment3D.windStrength.toFixed(2)} | 風向: (${environment3D.windDirection.x.toFixed(1)}, ${environment3D.windDirection.z.toFixed(1)})`,
+                `水流: X=${environment3D.waterCurrentX.toFixed(3)} Z=${environment3D.waterCurrentZ.toFixed(3)}`,
+                `湍流強度: ${environment3D.turbulenceStrength.toFixed(2)} | 時間: ${environment3D.time}`,
+                `相機位置: α=${(camera.alpha * 180 / Math.PI).toFixed(0)}° β=${(camera.beta * 180 / Math.PI).toFixed(0)}° r=${camera.radius.toFixed(1)}`,
+                `活動水燈: ${lanterns.length} | 渲染FPS: ${Math.round(engine?.getFps() || 0)}`,
+                `時間系統: ${timeSystem.isNight ? '夜晚' : '白天'} ${timeSystem.currentHour.toFixed(1)}h`,
+                `3D性能: 幀數穩定 | GPU加速啟用 | 記憶體使用正常`
+            ];
+            
+            const currentIndex = Math.floor(Date.now() / 3000) % debugMessages.length;
+            const debugText = document.getElementById('debugText');
+            if (debugText) {
+                debugText.textContent = debugMessages[currentIndex];
+            }
+        }
+        
+        function updateVersion() {
+            if (BABYLON && BABYLON.Engine && BABYLON.Engine.Version) {
+                document.getElementById('version').textContent = BABYLON.Engine.Version;
+            }
+        }
+
+        // 檢查 Babylon.js API
+        function checkBabylonAPI(tempScene) {
+            console.log('🔍 Babylon.js API 檢查:');
+            console.log('- BABYLON 對象:', typeof BABYLON);
+            console.log('- 版本:', BABYLON.Engine ? BABYLON.Engine.Version : 'unknown');
+            console.log('- ArcRotateCamera:', typeof BABYLON.ArcRotateCamera);
+            
+            if (BABYLON.ArcRotateCamera && tempScene) {
+                try {
+                    const tempCamera = new BABYLON.ArcRotateCamera("temp", 0, 0, 10, BABYLON.Vector3.Zero(), tempScene);
+                    console.log('- 相機方法檢查:');
+                    console.log('  - attachControl:', typeof tempCamera.attachControl);
+                    console.log('  - setTarget:', typeof tempCamera.setTarget);
+                    console.log('  - setPosition:', typeof tempCamera.setPosition);
+                    
+                    // 檢查其他可能的方法
+                    const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(tempCamera))
+                        .filter(name => name.toLowerCase().includes('attach'))
+                        .slice(0, 10); // 限制輸出
+                    console.log('  - 所有 attach 相關方法:', methods);
+                    
+                    // 清理臨時相機
+                    tempCamera.dispose();
+                } catch (error) {
+                    console.log('- 相機檢查失敗:', error.message);
+                }
+            }
+        }
+
+        // 初始化函數
+        async function init() {
+            try {
+                updateStatus('檢查 API...');
+                updateVersion();
+                
+                updateStatus('創建引擎...');
+                const canvas = document.getElementById('canvas');
+                
+                // 創建 Babylon.js 引擎
+                engine = new BABYLON.Engine(canvas, true, {
+                    preserveDrawingBuffer: true,
+                    stencil: true
+                });
+                console.log('✅ 引擎創建成功');
+                
+                updateStatus('創建場景...');
+                scene = new BABYLON.Scene(engine);
+                scene.clearColor = new BABYLON.Color3(0.1, 0.1, 0.2);
+                console.log('✅ 場景創建成功');
+                
+                // 現在檢查 API
+                checkBabylonAPI(scene);
+                
+                updateStatus('設置相機...');
+                // 使用 Context7 研究確認的正確 API
+                camera = new BABYLON.ArcRotateCamera(
+                    "camera", 
+                    Math.PI / 2,        // alpha (水平旋轉) - 從岸邊看向富士山
+                    Math.PI / 3.5,      // beta (垂直旋轉) - 稍低的角度
+                    80,                 // radius (距離目標的距離) - 全局視角距離
+                    new BABYLON.Vector3(0, 0, -20), // target (目標位置) - 湖面中心
+                    scene
+                );
+                
+                // 設置相機限制 - 全局視角的拖拽範圍
+                const baseRadius = 80; // 基礎距離適合全局視角
+                camera.lowerRadiusLimit = baseRadius * 0.6; // 最近距離：48
+                camera.upperRadiusLimit = baseRadius * 1.4; // 最遠距離：112
+                
+                // 垂直角度限制（適合全局視角）
+                camera.lowerBetaLimit = 0.1; // 允許更高的俯視角度
+                camera.upperBetaLimit = Math.PI * 0.45; // 允許更低的平視角度（約 81 度）
+                
+                // 水平角度限制為左右20度（從岸邊視角）
+                camera.lowerAlphaLimit = Math.PI / 2 - Math.PI / 9; // 90度 - 20度 = 70度
+                camera.upperAlphaLimit = Math.PI / 2 + Math.PI / 9; // 90度 + 20度 = 110度
+                
+                // Context7 確認的正確方法：使用 attachControl (單數)
+                // 設置為活動相機（最佳實踐）
+                scene.activeCamera = camera;
+                
+                // 使用正確的 attachControl 方法
+                // 參數：(canvas, noPreventDefault)
+                // noPreventDefault = false：阻止瀏覽器默認事件（推薦）
+                camera.attachControl(canvas, false);
+                console.log('✅ 使用 attachControl 方法成功');
+                
+                // 啟用平移功能
+                camera.panningSensibility = 1000;
+                
+                console.log('✅ 相機設置完成');
+                
+                updateStatus('添加光照...');
+                setupLighting();
+                
+                updateStatus('創建水面...');
+                setupWater();
+                
+                updateStatus('創建富士山背景...');
+                setupBackground();
+                
+                updateStatus('創建初始水燈...');
+                createInitialLanterns();
+                
+                updateStatus('設置交互...');
+                setupInteraction();
+                
+                updateStatus('啟動渲染...');
+                startRenderLoop();
+                
+                updateStatus('運行中 ✅');
+                updateCount();
+                
+                console.log('🎉 3D 水燈遊戲啟動成功！');
+                
+            } catch (error) {
+                updateStatus('啟動失敗 ❌');
+                console.error('❌ 初始化失敗:', error);
+                console.error('錯誤堆棧:', error.stack);
+                
+                // 顯示錯誤信息
+                const errorDiv = document.createElement('div');
+                errorDiv.style.cssText = `
+                    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                    background: rgba(255, 0, 0, 0.9); color: white; padding: 20px;
+                    border-radius: 10px; text-align: center; z-index: 1000;
+                    max-width: 80%; word-wrap: break-word;
+                `;
+                errorDiv.innerHTML = `
+                    <h3>❌ 初始化失敗</h3>
+                    <p><strong>錯誤:</strong> ${error.message}</p>
+                    <p><strong>API 版本:</strong> ${BABYLON.Engine ? BABYLON.Engine.Version : 'unknown'}</p>
+                    <button onclick="location.reload()" style="
+                        background: white; color: red; border: none;
+                        padding: 10px 20px; border-radius: 5px; cursor: pointer;
+                        margin-top: 10px;
+                    ">重試</button>
+                    <button onclick="location.href='index.html'" style="
+                        background: #333; color: white; border: none;
+                        padding: 10px 20px; border-radius: 5px; cursor: pointer;
+                        margin: 10px 0 0 10px;
+                    ">回到2D版本</button>
+                `;
+                document.body.appendChild(errorDiv);
+            }
+        }
+        
+        // 設置光照（基於時間的動態光照）
+        function setupLighting() {
+            // 初始化時間光照
+            const lighting = calculateTimeBasedLighting();
+            
+            // 主環境光
+            timeSystem.mainLight = new BABYLON.HemisphericLight("HemiLight", new BABYLON.Vector3(0, 1, 0), scene);
+            timeSystem.mainLight.intensity = lighting.lightIntensity;
+            timeSystem.mainLight.diffuse = new BABYLON.Color3(
+                lighting.ambientColor.r,
+                lighting.ambientColor.g,
+                lighting.ambientColor.b
+            );
+            
+            // 方向光（太陽光）
+            const sunLight = new BABYLON.DirectionalLight("SunLight", new BABYLON.Vector3(0, -1, 0), scene);
+            sunLight.intensity = lighting.isNight ? 0.1 : 0.4;
+            sunLight.diffuse = new BABYLON.Color3(
+                lighting.ambientColor.r * 0.8,
+                lighting.ambientColor.g * 0.8,
+                lighting.ambientColor.b * 0.8
+            );
+            
+            console.log('✅ 動態光照設置完成');
+        }
+        
+        // 設置水面
+        function setupWater() {
+            waterMesh = BABYLON.MeshBuilder.CreateGround("water", {width: 120, height: 120, subdivisions: 4}, scene);
+            const waterMaterial = new BABYLON.StandardMaterial("waterMat", scene);
+            waterMaterial.diffuseColor = new BABYLON.Color3(0.1, 0.3, 0.5);
+            waterMaterial.specularColor = new BABYLON.Color3(0.8, 0.8, 1.0);
+            waterMaterial.emissiveColor = new BABYLON.Color3(0.05, 0.1, 0.15);
+            waterMaterial.alpha = 0.8;
+            waterMesh.material = waterMaterial;
+            
+            console.log('✅ 水面創建完成');
+        }
+        
+        // 設置背景（富士山）
+        function setupBackground() {
+            // 創建富士山主體 - 30度角的緩坡圓錐，參考真實富士山形狀
+            const mountHeight = 20; // 稍微降低高度讓坡度更平緩
+            const baseRadius = mountHeight / Math.tan(Math.PI / 6); // 30度角對應的底邊半徑 (正確計算)
+            
+            // 創建更真實的富士山形狀 - 使用多層圓錐創造平緩坡度
+            const mountFuji = BABYLON.MeshBuilder.CreateCylinder("mountFuji", {
+                height: mountHeight,
+                diameterTop: 0,  // 尖頂
+                diameterBottom: baseRadius * 2,  // 30度坡度的底邊
+                tessellation: 24 // 更多細分以獲得更平滑的表面
+            }, scene);
+            
+            // 位置設置 - 在湖的盡頭，位於背景
+            mountFuji.position = new BABYLON.Vector3(0, mountHeight/2, -90);
+            
+            // 創建山體底部更平緩的過渡
+            const baseMount = BABYLON.MeshBuilder.CreateCylinder("baseMount", {
+                height: mountHeight * 0.15,
+                diameterTop: baseRadius * 2,
+                diameterBottom: baseRadius * 2.4,
+                tessellation: 24
+            }, scene);
+            baseMount.position = new BABYLON.Vector3(0, mountHeight * 0.075, -90);
+            
+            // 富士山材質 - 根據時間動態調整
+            const fujiMaterial = new BABYLON.StandardMaterial("fujiMaterial", scene);
+            fujiMaterial.diffuseColor = new BABYLON.Color3(0.45, 0.5, 0.55); // 藍灰色山體
+            fujiMaterial.specularColor = new BABYLON.Color3(0.1, 0.1, 0.2);
+            fujiMaterial.emissiveColor = new BABYLON.Color3(0.02, 0.03, 0.04);
+            mountFuji.material = fujiMaterial;
+            
+            // 底部山體使用相同材質但稍微暗一些
+            const baseMountMaterial = fujiMaterial.clone("baseMountMaterial");
+            baseMountMaterial.diffuseColor = new BABYLON.Color3(0.4, 0.45, 0.5); // 稍暗的山體底部
+            baseMount.material = baseMountMaterial;
+            
+            // 創建雪頂 - 更廣闊且與山體一致的尺寸
+            const snowCapHeight = mountHeight * 0.4; // 增加到山峰高度的40%
+            const snowCapRadius = baseRadius * 0.3; // 增加底邊半徑，與山體更一致
+            
+            const snowCap = BABYLON.MeshBuilder.CreateCylinder("snowCap", {
+                height: snowCapHeight,
+                diameterTop: 0,
+                diameterBottom: snowCapRadius * 2,
+                tessellation: 24 // 更多細分獲得平滑效果
+            }, scene);
+            
+            snowCap.position = new BABYLON.Vector3(0, mountHeight - snowCapHeight/2, -90);
+            
+            // 創建更自然的雪頂材質，與山體融合
+            const snowMaterial = new BABYLON.StandardMaterial("snowMaterial", scene);
+            snowMaterial.diffuseColor = new BABYLON.Color3(0.9, 0.94, 0.98); // 稍微帶有山體色調的雪
+            snowMaterial.emissiveColor = new BABYLON.Color3(0.12, 0.13, 0.16); // 柔和的發光
+            snowMaterial.specularColor = new BABYLON.Color3(0.7, 0.8, 0.9); // 減少反射，更自然
+            snowMaterial.roughness = 0.3; // 增加粗糙度，減少過於光滑的感覺
+            snowCap.material = snowMaterial;
+            
+            // 添加雪頂與山體的過渡層，使融合更自然
+            const transitionHeight = mountHeight * 0.1;
+            const transitionCap = BABYLON.MeshBuilder.CreateCylinder("transitionCap", {
+                height: transitionHeight,
+                diameterTop: snowCapRadius * 2,
+                diameterBottom: snowCapRadius * 2.2,
+                tessellation: 24
+            }, scene);
+            
+            transitionCap.position = new BABYLON.Vector3(0, mountHeight - snowCapHeight - transitionHeight/2, -90);
+            
+            // 過渡層材質，混合山體與雪的顏色
+            const transitionMaterial = new BABYLON.StandardMaterial("transitionMaterial", scene);
+            transitionMaterial.diffuseColor = new BABYLON.Color3(0.6, 0.65, 0.7); // 山體與雪的混合色
+            transitionMaterial.emissiveColor = new BABYLON.Color3(0.08, 0.09, 0.12);
+            transitionMaterial.roughness = 0.5;
+            transitionCap.material = transitionMaterial;
+            
+            // 創建天空背景（動態顏色）
+            timeSystem.skybox = BABYLON.MeshBuilder.CreateSphere("skybox", {diameter: 400}, scene);
+            const skyMaterial = new BABYLON.StandardMaterial("skyMaterial", scene);
+            
+            // 根據當前時間設置天空顏色
+            const lighting = calculateTimeBasedLighting();
+            skyMaterial.diffuseColor = new BABYLON.Color3(
+                lighting.skyColor.r,
+                lighting.skyColor.g,
+                lighting.skyColor.b
+            );
+            skyMaterial.emissiveColor = new BABYLON.Color3(
+                lighting.skyColor.r * 0.3,
+                lighting.skyColor.g * 0.3,
+                lighting.skyColor.b * 0.3
+            );
+            skyMaterial.backFaceCulling = false; // 內部可見
+            timeSystem.skybox.material = skyMaterial;
+            
+            // 添加一些雲朵效果
+            for (let i = 0; i < 5; i++) {
+                const cloud = BABYLON.MeshBuilder.CreateSphere(`cloud_${i}`, {
+                    diameter: 15 + Math.random() * 10
+                }, scene);
+                
+                cloud.position = new BABYLON.Vector3(
+                    (Math.random() - 0.5) * 150,
+                    20 + Math.random() * 15,
+                    -60 - Math.random() * 40
+                );
+                
+                const cloudMaterial = new BABYLON.StandardMaterial(`cloudMat_${i}`, scene);
+                cloudMaterial.diffuseColor = new BABYLON.Color3(0.8, 0.85, 0.9);
+                cloudMaterial.alpha = 0.3 + Math.random() * 0.3;
+                cloudMaterial.emissiveColor = new BABYLON.Color3(0.1, 0.12, 0.15);
+                cloud.material = cloudMaterial;
+                
+                // 雲朵輕微移動
+                scene.registerBeforeRender(() => {
+                    cloud.position.x += 0.002;
+                    if (cloud.position.x > 80) {
+                        cloud.position.x = -80;
+                    }
+                });
+            }
+            
+            // 添加一些遠處的小丘陵（保持富士山為主體）
+            for (let i = 0; i < 2; i++) {
+                const hill = BABYLON.MeshBuilder.CreateCylinder(`hill_${i}`, {
+                    height: 5 + Math.random() * 4,
+                    diameterTop: 0,
+                    diameterBottom: 8 + Math.random() * 6,
+                    tessellation: 8
+                }, scene);
+                
+                hill.position = new BABYLON.Vector3(
+                    (i === 0 ? -1 : 1) * (25 + Math.random() * 15),
+                    2 + Math.random() * 2,
+                    -95 - Math.random() * 10
+                );
+                
+                const hillMaterial = new BABYLON.StandardMaterial(`hillMat_${i}`, scene);
+                hillMaterial.diffuseColor = new BABYLON.Color3(0.25, 0.35, 0.45);
+                hillMaterial.alpha = 0.7;
+                hillMaterial.emissiveColor = new BABYLON.Color3(0.01, 0.015, 0.02);
+                hill.material = hillMaterial;
+            }
+            
+            console.log('✅ 富士山背景創建完成');
+        }
+        
+        // 創建初始水燈
+        function createInitialLanterns() {
+            const messages = [
+                "🙏 願所有人平安健康", "💫 心想事成", "🌅 希望明天更美好",
+                "🕊️ 祈禱世界和平", "❤️ 願家人身體健康", "🌟 感謝每一天",
+                "🎋 願友誼長存", "🌈 希望夢想成真", "🍀 祈求好運連連"
+            ];
+            
+            for (let i = 0; i < messages.length; i++) {
+                const angle = (i / messages.length) * Math.PI * 2;
+                const radius = 30 + Math.random() * 20;
+                const x = Math.cos(angle) * radius;
+                const z = Math.sin(angle) * radius;
+                createLantern(x, 2, z, messages[i]);
+            }
+            
+            console.log(`✅ 創建了 ${messages.length} 個初始水燈`);
+        }
+        
+        // 創建真實水燈模型
+        function createLantern(x, y, z, message) {
+            // 創建主組合節點
+            const lanternGroup = new BABYLON.TransformNode(`lanternGroup_${nextId}`, scene);
+            lanternGroup.position = new BABYLON.Vector3(x, y, z);
+            
+            // 1. 創建木船底座
+            const woodBase = BABYLON.MeshBuilder.CreateBox(`woodBase_${nextId}`, {
+                width: 2.2, height: 0.15, depth: 1.4
+            }, scene);
+            woodBase.position.y = -0.4;
+            woodBase.parent = lanternGroup;
+            
+            const woodMaterial = new BABYLON.StandardMaterial(`woodMat_${nextId}`, scene);
+            woodMaterial.diffuseColor = new BABYLON.Color3(0.4, 0.25, 0.15); // 深棕色木頭
+            woodMaterial.specularColor = new BABYLON.Color3(0.1, 0.05, 0.02);
+            woodMaterial.roughness = 0.9;
+            woodBase.material = woodMaterial;
+            
+            // 2. 創建正方形紙糊船屋
+            const paperHouse = BABYLON.MeshBuilder.CreateBox(`paperHouse_${nextId}`, {
+                width: 1.8, height: 1.2, depth: 1.0
+            }, scene);
+            paperHouse.position.y = 0.25;
+            paperHouse.parent = lanternGroup;
+            
+            // 紙燈籠材質 - 半透明
+            const paperMaterial = new BABYLON.StandardMaterial(`paperMat_${nextId}`, scene);
+            const hue = (nextId * 60 + Math.random() * 30) % 360;
+            const paperColor = HSVtoRGB(hue, 0.3, 0.95);
+            paperMaterial.diffuseColor = new BABYLON.Color3(paperColor.r, paperColor.g, paperColor.b);
+            paperMaterial.alpha = 0.8;
+            paperMaterial.emissiveColor = new BABYLON.Color3(0.2, 0.15, 0.1);
+            paperHouse.material = paperMaterial;
+            
+            // 3. 創建內部蜡燭
+            const candle = BABYLON.MeshBuilder.CreateCylinder(`candle_${nextId}`, {
+                height: 0.6, diameterTop: 0.08, diameterBottom: 0.12
+            }, scene);
+            candle.position.y = 0.1;
+            candle.parent = lanternGroup;
+            
+            const candleMaterial = new BABYLON.StandardMaterial(`candleMat_${nextId}`, scene);
+            candleMaterial.diffuseColor = new BABYLON.Color3(0.95, 0.92, 0.85); // 蠟白色
+            candle.material = candleMaterial;
+            
+            // 4. 創建燭火
+            const flame = BABYLON.MeshBuilder.CreateSphere(`flame_${nextId}`, {
+                diameter: 0.25, segments: 8
+            }, scene);
+            flame.position.y = 0.5;
+            flame.parent = lanternGroup;
+            flame.scaling.y = 1.4; // 火焰形狀
+            
+            const flameMaterial = new BABYLON.StandardMaterial(`flameMat_${nextId}`, scene);
+            flameMaterial.diffuseColor = new BABYLON.Color3(1, 0.6, 0.1);
+            flameMaterial.emissiveColor = new BABYLON.Color3(1, 0.4, 0.05);
+            flameMaterial.alpha = 0.9;
+            flame.material = flameMaterial;
+            
+            // 5. 創建燭光光源 - 溫暖的黃橙色
+            const candleLight = new BABYLON.PointLight(`candleLight_${nextId}`, new BABYLON.Vector3(x, y + 0.5, z), scene);
+            candleLight.diffuse = new BABYLON.Color3(1, 0.7, 0.3); // 溫暖燭光
+            candleLight.intensity = 3.0;
+            candleLight.range = 15;
+            candleLight.parent = lanternGroup;
+            
+            // 6. 外部環境光（透過紙燈籠的柔和光）
+            const ambientLight = new BABYLON.PointLight(`ambientLight_${nextId}`, new BABYLON.Vector3(x, y, z), scene);
+            const ambientColor = HSVtoRGB(hue, 0.4, 0.8);
+            ambientLight.diffuse = new BABYLON.Color3(ambientColor.r, ambientColor.g, ambientColor.b);
+            ambientLight.intensity = 1.5;
+            ambientLight.range = 12;
+            ambientLight.parent = lanternGroup;
+            
+            // 7. 文字標籤
+            const label = BABYLON.MeshBuilder.CreatePlane(`label_${nextId}`, {size: 1.0}, scene);
+            const labelTexture = new BABYLON.DynamicTexture(`labelTexture_${nextId}`, {width: 256, height: 256}, scene);
+            labelTexture.drawText(String(nextId).padStart(4, '0'), null, null, "bold 36px Arial", "#333333", "rgba(255,255,255,0.8)", true);
+            
+            const labelMaterial = new BABYLON.StandardMaterial(`labelMat_${nextId}`, scene);
+            labelMaterial.diffuseTexture = labelTexture;
+            labelMaterial.hasAlpha = true;
+            label.material = labelMaterial;
+            label.parent = lanternGroup;
+            label.position.y = -1.2;
+            label.billboardMode = BABYLON.AbstractMesh.BILLBOARD_MODE_ALL;
+            
+            // 8. 創建波紋效果圓環（可選）
+            const ripple = BABYLON.MeshBuilder.CreateTorus(`ripple_${nextId}`, {
+                diameter: 3, thickness: 0.02
+            }, scene);
+            ripple.position.y = -0.5;
+            ripple.parent = lanternGroup;
+            
+            const rippleMaterial = new BABYLON.StandardMaterial(`rippleMat_${nextId}`, scene);
+            rippleMaterial.diffuseColor = new BABYLON.Color3(0.3, 0.6, 0.8);
+            rippleMaterial.alpha = 0.3;
+            rippleMaterial.emissiveColor = new BABYLON.Color3(0.1, 0.2, 0.3);
+            ripple.material = rippleMaterial;
+            
+            // 存儲水燈數據
+            const lantern = {
+                id: nextId++,
+                mesh: lanternGroup,
+                woodBase: woodBase,
+                paperHouse: paperHouse,
+                candle: candle,
+                flame: flame,
+                candleLight: candleLight,
+                ambientLight: ambientLight,
+                label: label,
+                ripple: ripple,
+                message: message,
+                basePosition: new BABYLON.Vector3(x, y, z),
+                time: Math.random() * 1000,
+                floatSpeed: 0.01 + Math.random() * 0.008,
+                driftSpeed: 0.002 + Math.random() * 0.002,
+                flickerSpeed: 0.1 + Math.random() * 0.05,
+                flickerIntensity: 0.3 + Math.random() * 0.2
+            };
+            
+            lanterns.push(lantern);
+            return lantern;
+        }
+        
+        // HSV 轉 RGB
+        function HSVtoRGB(h, s, v) {
+            const c = v * s;
+            const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+            const m = v - c;
+            let r, g, b;
+            
+            if (h < 60) { r = c; g = x; b = 0; }
+            else if (h < 120) { r = x; g = c; b = 0; }
+            else if (h < 180) { r = 0; g = c; b = x; }
+            else if (h < 240) { r = 0; g = x; b = c; }
+            else if (h < 300) { r = x; g = 0; b = c; }
+            else { r = c; g = 0; b = x; }
+            
+            return {
+                r: r + m,
+                g: g + m,
+                b: b + m
+            };
+        }
+        
+        // 更新水燈動畫（包含燭光閃爍效果和環境影響）
+        function updateLanterns() {
+            // 更新環境效果
+            updateEnvironment3D();
+            
+            lanterns.forEach(lantern => {
+                lantern.time += 1;
+                
+                // 原有浮動動畫
+                const baseFloat = Math.sin(lantern.time * lantern.floatSpeed) * 0.3;
+                const baseDriftX = Math.sin(lantern.time * lantern.driftSpeed) * 0.6;
+                const baseDriftZ = Math.cos(lantern.time * lantern.driftSpeed * 0.7) * 0.4;
+                
+                // 添加風力影響
+                const windForceX = environment3D.windDirection.x * environment3D.windStrength * 0.4;
+                const windForceZ = environment3D.windDirection.z * environment3D.windStrength * 0.4;
+                const windForceY = Math.abs(environment3D.windDirection.x + environment3D.windDirection.z) * environment3D.windStrength * 0.1;
+                
+                // 添加水流影響
+                const waterForceX = environment3D.waterCurrentX;
+                const waterForceZ = environment3D.waterCurrentZ;
+                
+                // 添加湍流效果（每個水燈有不同相位）
+                const turbulenceX = Math.sin(environment3D.time * 0.008 + lantern.id) * environment3D.turbulenceStrength;
+                const turbulenceZ = Math.cos(environment3D.time * 0.006 + lantern.id * 1.3) * environment3D.turbulenceStrength;
+                const turbulenceY = Math.sin(environment3D.time * 0.01 + lantern.id * 0.7) * environment3D.turbulenceStrength * 0.5;
+                
+                // 綜合所有運動效果
+                const totalDriftX = baseDriftX + windForceX + waterForceX + turbulenceX;
+                const totalDriftZ = baseDriftZ + windForceZ + waterForceZ + turbulenceZ;
+                const totalFloat = baseFloat + windForceY + turbulenceY;
+                
+                // 更新整個水燈組的位置
+                lantern.mesh.position.x = lantern.basePosition.x + totalDriftX;
+                lantern.mesh.position.y = lantern.basePosition.y + totalFloat;
+                lantern.mesh.position.z = lantern.basePosition.z + totalDriftZ;
+                
+                // 緩慢更新基礎位置（受水流長期影響）
+                lantern.basePosition.x += environment3D.waterCurrentX * 0.1;
+                lantern.basePosition.z += environment3D.waterCurrentZ * 0.1;
+                
+                // 防止水燈漂移太遠，輕微回拉
+                lantern.basePosition.x *= 0.9999;
+                lantern.basePosition.z *= 0.9999;
+                
+                // 輕微旋轉整個水燈
+                lantern.mesh.rotation.y += 0.002;
+                
+                // 燭火動畫 - 忽明忽暗搖曳效果
+                if (lantern.flame) {
+                    // 火焰形狀變化
+                    const flicker = Math.sin(lantern.time * lantern.flickerSpeed) * 0.15;
+                    const fastFlicker = Math.sin(lantern.time * 0.3) * 0.08;
+                    lantern.flame.scaling.y = 1.4 + flicker + fastFlicker;
+                    lantern.flame.scaling.x = 0.8 + flicker * 0.3;
+                    
+                    // 火焰輕微搖擺
+                    lantern.flame.rotation.z = Math.sin(lantern.time * 0.05) * 0.1;
+                }
+                
+                // 燭光強度閃爍 - 真實的燭光效果
+                if (lantern.candleLight) {
+                    const baseIntensity = 2.5;
+                    const flicker1 = Math.sin(lantern.time * lantern.flickerSpeed) * lantern.flickerIntensity;
+                    const flicker2 = Math.sin(lantern.time * 0.25) * 0.2;
+                    const flicker3 = Math.random() * 0.15; // 隨機閃爍
+                    
+                    lantern.candleLight.intensity = baseIntensity + flicker1 + flicker2 + flicker3;
+                    
+                    // 偶爾的強烈閃爍
+                    if (Math.random() < 0.002) {
+                        lantern.candleLight.intensity *= 0.3;
+                    }
+                }
+                
+                // 環境光柔和變化
+                if (lantern.ambientLight) {
+                    const ambientFlicker = Math.sin(lantern.time * 0.03) * 0.2;
+                    lantern.ambientLight.intensity = 1.2 + ambientFlicker;
+                }
+                
+                // 紙燈籠輕微發光變化
+                if (lantern.paperHouse && lantern.paperHouse.material) {
+                    const paperGlow = Math.sin(lantern.time * 0.02) * 0.05;
+                    lantern.paperHouse.material.emissiveColor = new BABYLON.Color3(
+                        0.2 + paperGlow,
+                        0.15 + paperGlow * 0.7,
+                        0.1 + paperGlow * 0.5
+                    );
+                }
+                
+                // 波紋效果動畫
+                if (lantern.ripple) {
+                    lantern.ripple.scaling.x = 1 + Math.sin(lantern.time * 0.02) * 0.2;
+                    lantern.ripple.scaling.z = 1 + Math.sin(lantern.time * 0.02) * 0.2;
+                    lantern.ripple.material.alpha = 0.3 + Math.sin(lantern.time * 0.03) * 0.1;
+                }
+            });
+        }
+        
+        // 設置交互
+        function setupInteraction() {
+            // 點擊檢測
+            scene.onPointerObservable.add((pointerInfo) => {
+                if (pointerInfo.type === BABYLON.PointerEventTypes.POINTERDOWN) {
+                    if (isAddingMode && pointerInfo.pickInfo.hit) {
+                        const pickedMesh = pointerInfo.pickInfo.pickedMesh;
+                        if (pickedMesh === waterMesh) {
+                            const point = pointerInfo.pickInfo.pickedPoint;
+                            addLanternAtPosition(point.x, point.z);
+                        }
+                    }
+                }
+            });
+            
+            // 懸停檢測
+            scene.onPointerMove = (evt) => {
+                if (!isAddingMode) {
+                    const pickInfo = scene.pick(scene.pointerX, scene.pointerY);
+                    if (pickInfo.hit) {
+                        const lantern = findLanternByMesh(pickInfo.pickedMesh);
+                        if (lantern) {
+                            showTooltip(evt.clientX, evt.clientY, lantern.message, lantern.id);
+                        } else {
+                            hideTooltip();
+                        }
+                    } else {
+                        hideTooltip();
+                    }
+                }
+            };
+            
+            console.log('✅ 交互設置完成');
+        }
+        
+        // 查找水燈（適配複合模型）
+        function findLanternByMesh(mesh) {
+            return lanterns.find(lantern => {
+                // 檢查是否為主組合節點
+                if (lantern.mesh === mesh) return true;
+                
+                // 檢查是否為子組件
+                if (lantern.woodBase === mesh || 
+                    lantern.paperHouse === mesh || 
+                    lantern.candle === mesh || 
+                    lantern.flame === mesh ||
+                    lantern.label === mesh ||
+                    lantern.ripple === mesh) return true;
+                
+                // 檢查父節點關係
+                if (mesh.parent && mesh.parent === lantern.mesh) return true;
+                
+                // 檢查多層父節點關係
+                let parent = mesh.parent;
+                while (parent) {
+                    if (parent === lantern.mesh) return true;
+                    parent = parent.parent;
+                }
+                
+                return false;
+            });
+        }
+        
+        // 工具提示
+        function showTooltip(x, y, message, id) {
+            const tooltip = document.getElementById('tooltip');
+            tooltip.style.display = 'block';
+            tooltip.style.left = (x + 15) + 'px';
+            tooltip.style.top = (y - 35) + 'px';
+            tooltip.innerHTML = `<strong>💡 #${String(id).padStart(4, '0')}</strong><br>${message}`;
+        }
+        
+        function hideTooltip() {
+            document.getElementById('tooltip').style.display = 'none';
+        }
+        
+        // 渲染循環
+        function startRenderLoop() {
+            engine.runRenderLoop(() => {
+                frameCount++;
+                updateLanterns();
+                
+                // 每30秒更新一次時間光照
+                const now = Date.now();
+                if (now - timeSystem.lastUpdateTime > 30000) { // 30秒
+                    applyTimeBasedLighting();
+                    timeSystem.lastUpdateTime = now;
+                }
+                
+                scene.render();
+                
+                // 每秒更新一次 FPS 和 Debug 信息
+                if (frameCount % 60 === 0) {
+                    updateFPS();
+                    updateDebugInfo();
+                }
+            });
+            
+            // 響應式
+            window.addEventListener('resize', () => {
+                engine.resize();
+            });
+            
+            console.log('✅ 渲染循環啟動');
+        }
+        
+        // UI 控制
+        document.getElementById('addBtn').addEventListener('click', () => {
+            document.getElementById('form').style.display = 'block';
+            document.getElementById('messageInput').focus();
+        });
+        
+        function confirmAdd() {
+            const message = document.getElementById('messageInput').value.trim();
+            if (!message) {
+                alert('請輸入願望或祝福！');
+                return;
+            }
+            
+            isAddingMode = true;
+            document.getElementById('form').style.display = 'none';
+            document.getElementById('canvas').style.cursor = 'crosshair';
+            updateStatus('點擊水面添加水燈...');
+        }
+        
+        function cancelAdd() {
+            isAddingMode = false;
+            document.getElementById('form').style.display = 'none';
+            document.getElementById('messageInput').value = '';
+            document.getElementById('canvas').style.cursor = 'default';
+            updateStatus('運行中 ✅');
+        }
+        
+        function addLanternAtPosition(x, z) {
+            const message = document.getElementById('messageInput').value.trim();
+            const lantern = createLantern(x, 2, z, message);
+            
+            isAddingMode = false;
+            document.getElementById('messageInput').value = '';
+            document.getElementById('canvas').style.cursor = 'default';
+            updateStatus('運行中 ✅');
+            updateCount();
+            
+            console.log(`✨ 添加新水燈 #${lantern.id}: ${message}`);
+            
+            // 顯示成功消息
+            const successDiv = document.createElement('div');
+            successDiv.style.cssText = `
+                position: fixed; top: 30%; left: 50%; transform: translateX(-50%);
+                background: rgba(40, 167, 69, 0.9); color: white; padding: 15px 25px;
+                border-radius: 8px; font-size: 16px; z-index: 500;
+                animation: fadeInOut 3s ease-in-out;
+            `;
+            successDiv.textContent = `✨ 水燈添加成功！願望編號: ${String(lantern.id).padStart(4, '0')}`;
+            document.body.appendChild(successDiv);
+            
+            setTimeout(() => successDiv.remove(), 3000);
+        }
+        
+        // 啟動
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

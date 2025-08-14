@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>燈籠流水 - 放水灯（GitHub Pages + Supabase版）</title>
+    
+    <!-- 防止 favicon 404 错误 -->
+    <link rel="icon" href="data:,">
+    
+    <!-- SEO 和 PWA 相关 -->
+    <meta name="description" content="互動式水燈許願網頁，點擊湖面添加水燈並寫下願望">
+    <meta name="theme-color" content="#1a1a2e">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a2e;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            touch-action: manipulation;
+        }
+        
+        #canvas {
+            display: block;
+            cursor: default;
+            touch-action: manipulation;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+        
+        /* 竪屏時的拖拽光標樣式 */
+        @media (orientation: portrait) {
+            #canvas:not(.adding-mode) {
+                cursor: grab;
+            }
+            
+            #canvas:not(.adding-mode):active {
+                cursor: grabbing;
+            }
+        }
+        
+        #tooltip {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.95);
+            border: 2px solid #333;
+            border-radius: 8px;
+            padding: 10px;
+            max-width: 200px;
+            font-size: 12px;
+            color: #333;
+            pointer-events: none;
+            display: none;
+            z-index: 1000;
+            word-wrap: break-word;
+        }
+        
+        #tooltip::before {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 8px solid #333;
+        }
+        
+        #addLanternForm {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 12px;
+            display: none;
+            z-index: 1000;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            width: 90%;
+            max-width: 320px;
+        }
+        
+        #addLanternForm input, #addLanternForm textarea {
+            width: 100%;
+            box-sizing: border-box;
+            margin: 8px 0;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        
+        #addLanternForm textarea {
+            height: 60px;
+            resize: none;
+        }
+        
+        #addLanternForm button {
+            background: #4a90e2;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 8px 5px;
+            font-size: 16px;
+            min-height: 44px;
+        }
+        
+        #addLanternForm button:hover {
+            background: #357abd;
+        }
+        
+        #addButton {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #e2a04a;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            min-height: 44px;
+            z-index: 1000;
+        }
+        
+        #addButton:hover {
+            background: #c8893d;
+        }
+
+        #switchButton {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: #4a90e2;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            min-height: 40px;
+            z-index: 1000;
+        }
+
+        #switchButton:hover {
+            background: #357abd;
+        }
+
+        #configNotice {
+            position: fixed;
+            top: 80px;
+            left: 20px;
+            right: 20px;
+            background: rgba(255, 193, 7, 0.95);
+            color: #856404;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 1000;
+            max-width: calc(100vw - 40px);
+        }
+
+        #configNotice.hidden {
+            display: none;
+        }
+        
+        /* 手機版響應式設計 */
+        @media (max-width: 768px) {
+            #tooltip {
+                font-size: 14px;
+                padding: 12px;
+                max-width: 250px;
+            }
+            
+            #addButton {
+                font-size: 14px;
+                padding: 10px 16px;
+            }
+            
+            #configNotice {
+                font-size: 12px;
+                padding: 12px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            #addLanternForm {
+                width: 95%;
+                padding: 15px;
+            }
+            
+            #addLanternForm h3 {
+                margin-top: 0;
+                font-size: 18px;
+            }
+            
+            #tooltip {
+                font-size: 12px;
+                padding: 8px;
+                max-width: 200px;
+            }
+        }
+        
+        /* 瞄準提示動畫 */
+        @keyframes fadeInOut {
+            0% { 
+                opacity: 0; 
+                transform: translate(-50%, -50%) scale(0.8); 
+            }
+            20% { 
+                opacity: 1; 
+                transform: translate(-50%, -50%) scale(1); 
+            }
+            80% { 
+                opacity: 1; 
+                transform: translate(-50%, -50%) scale(1); 
+            }
+            100% { 
+                opacity: 0; 
+                transform: translate(-50%, -50%) scale(0.8); 
+            }
+        }
+        
+        /* 成功提示动画 */
+        @keyframes successFade {
+            0% { 
+                opacity: 0; 
+                transform: translate(-50%, -50%) scale(0.8); 
+            }
+            15% { 
+                opacity: 1; 
+                transform: translate(-50%, -50%) scale(1.05); 
+            }
+            25% { 
+                opacity: 1; 
+                transform: translate(-50%, -50%) scale(1); 
+            }
+            85% { 
+                opacity: 1; 
+                transform: translate(-50%, -50%) scale(1); 
+            }
+            100% { 
+                opacity: 0; 
+                transform: translate(-50%, -50%) scale(0.9); 
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="tooltip"></div>
+    
+    <button id="addButton">添加水灯</button>
+    <button id="switchButton" onclick="window.location.href='index-3d.html'">🌊 切換到3D版本</button>
+    
+    <!-- 科技感信息面板 -->
+    <div id="ui" style="
+        position: fixed; 
+        top: 15px; 
+        left: 15px; 
+        color: white;
+        background: rgba(0,0,0,0.8); 
+        padding: 15px; 
+        border-radius: 8px;
+        font-size: 13px; 
+        z-index: 100; 
+        max-width: 300px;
+        border: 1px solid rgba(102, 144, 226, 0.3);
+        font-family: 'Courier New', monospace;
+    ">
+        <div style="margin-bottom: 8px;"><strong>🏮 2D 水燈系統 (Canvas)</strong></div>
+        <div>狀態: <span id="status" style="color: #4a90e2;">運行中 ✅</span></div>
+        <div>水燈數量: <span id="count" style="color: #4a90e2;">0</span></div>
+        <div>FPS: <span id="fps" style="color: #4a90e2;">--</span></div>
+        <div>時間: <span id="currentTime" style="color: #4a90e2;">--:--</span></div>
+        <div>視角: <span id="viewMode" style="color: #4a90e2;">全景</span></div>
+        <div>畫布: <span id="canvasSize" style="color: #4a90e2;">--x--</span></div>
+        <hr style="margin: 8px 0; border: none; border-top: 1px solid #333;">
+        <div style="font-size: 11px; color: #ccc;">
+            🖱️ 拖拽移動畫布<br>
+            🎯 點擊湖面添加水燈<br>
+            🌊 富士山湖景 + 動態水流
+        </div>
+    </div>
+    
+    <div id="configNotice" style="display: none;">
+        ⚠️ 請先在 app.js 中配置您的 Supabase URL 和 API Key
+        <br><small>配置後將自動隱藏此提示</small>
+    </div>
+    
+    <div id="addLanternForm">
+        <h3>添加水灯</h3>
+        <input type="text" id="messageInput" placeholder="请输入140字内的消息..." maxlength="140">
+        <br>
+        <button id="cancelButton">取消</button>
+        <button id="confirmButton">确认添加</button>
+        <p style="font-size: 12px; color: #666;">点击湖面选择位置</p>
+    </div>
+
+    <!-- Debug 信息滚动显示 -->
+    <div id="debugPanel" style="
+        position: fixed; 
+        bottom: 15px; 
+        left: 50%; 
+        transform: translateX(-50%);
+        background: rgba(0,0,0,0.85); 
+        color: #00ff00; 
+        padding: 8px 15px; 
+        border-radius: 20px;
+        font-size: 11px; 
+        font-family: 'Courier New', monospace;
+        z-index: 50;
+        border: 1px solid rgba(0, 255, 0, 0.3);
+        min-width: 200px;
+        text-align: center;
+        backdrop-filter: blur(5px);
+    ">
+        <div id="debugText">系统初始化中...</div>
+    </div>
+
+    <script>
+        // 添加网络请求错误监控
+        window.addEventListener('error', function(e) {
+            if (e.target !== window) {
+                console.error('🚨 资源加载失败:', {
+                    source: e.target.src || e.target.href || '未知',
+                    tagName: e.target.tagName,
+                    error: e.message || '404 或加载失败'
+                });
+            }
+        }, true);
+        
+        // 监控未处理的Promise错误
+        window.addEventListener('unhandledrejection', function(e) {
+            console.error('🚨 Promise 错误:', e.reason);
+        });
+    </script>
+    <script src="./app.js"></script>
+</body>
+</html>

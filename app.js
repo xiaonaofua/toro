@@ -1,6 +1,135 @@
 // 純前端版本 - 直接連接Supabase
 // 可部署到任何靜態託管平台（GitHub Pages, Netlify等）
 
+// 全域水流和風動系統
+let environmentSystem = {
+    windStrength: 0.5,        // 風力強度
+    windDirection: Math.PI / 4, // 風向（角度）
+    windChangeTime: 0,        // 風向變化計時器
+    waterCurrentX: 0.02,      // 水流 X 方向
+    waterCurrentY: 0.01,      // 水流 Y 方向
+    turbulenceStrength: 0.3,  // 湍流強度
+    time: 0
+};
+
+// 更新環境參數
+function updateEnvironment() {
+    environmentSystem.time += 1;
+    
+    // 每 5-10 秒隨機改變風向和強度
+    if (environmentSystem.time % (300 + Math.random() * 300) === 0) {
+        environmentSystem.windDirection += (Math.random() - 0.5) * Math.PI / 2;
+        environmentSystem.windStrength = 0.3 + Math.random() * 0.7;
+    }
+    
+    // 水流方向緩慢變化
+    environmentSystem.waterCurrentX = Math.sin(environmentSystem.time * 0.001) * 0.03;
+    environmentSystem.waterCurrentY = Math.cos(environmentSystem.time * 0.0008) * 0.02;
+    
+    // 湍流效果
+    environmentSystem.turbulenceStrength = 0.2 + Math.sin(environmentSystem.time * 0.002) * 0.2;
+}
+
+// 時間光照系統
+let timeSystem2D = {
+    currentHour: 0,
+    isNight: false,
+    lastUpdateTime: 0,
+    skyColors: { top: '#1a1a3e', middle: '#2c3e60', bottom: '#34495e' },
+    mountainColor: '#1a252f',
+    waterColor: 'rgba(52, 152, 219, 0.4)'
+};
+
+// 2D 時間計算函數
+function calculateTimeBasedColors() {
+    const now = new Date();
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+    
+    timeSystem2D.currentHour = hour + minute / 60;
+    
+    // 定義時間段
+    const dawn = 5, sunrise = 6, noon = 12, sunset = 18, dusk = 19, night = 21;
+    
+    let skyColors, mountainColor, waterColor, isNight;
+    
+    if (timeSystem2D.currentHour >= dawn && timeSystem2D.currentHour < sunrise) {
+        // 黎明 5:00-6:00
+        const progress = (timeSystem2D.currentHour - dawn) / (sunrise - dawn);
+        skyColors = {
+            top: `rgb(${Math.floor(30 + progress * 40)}, ${Math.floor(30 + progress * 50)}, ${Math.floor(80 + progress * 60)})`,
+            middle: `rgb(${Math.floor(50 + progress * 60)}, ${Math.floor(70 + progress * 80)}, ${Math.floor(120 + progress * 80)})`,
+            bottom: `rgb(${Math.floor(70 + progress * 80)}, ${Math.floor(90 + progress * 100)}, ${Math.floor(140 + progress * 80)})`
+        };
+        mountainColor = `rgb(${Math.floor(40 + progress * 30)}, ${Math.floor(50 + progress * 40)}, ${Math.floor(70 + progress * 50)})`;
+        waterColor = `rgba(52, 152, 219, ${0.3 + progress * 0.2})`;
+        isNight = false;
+    } else if (timeSystem2D.currentHour >= sunrise && timeSystem2D.currentHour < noon) {
+        // 上午 6:00-12:00
+        const progress = (timeSystem2D.currentHour - sunrise) / (noon - sunrise);
+        skyColors = {
+            top: `rgb(${Math.floor(70 + progress * 80)}, ${Math.floor(80 + progress * 100)}, ${Math.floor(140 + progress * 100)})`,
+            middle: `rgb(${Math.floor(130 + progress * 100)}, ${Math.floor(150 + progress * 80)}, ${Math.floor(200 + progress * 50)})`,
+            bottom: `rgb(${Math.floor(150 + progress * 80)}, ${Math.floor(190 + progress * 50)}, ${Math.floor(220 + progress * 30)})`
+        };
+        mountainColor = `rgb(${Math.floor(70 + progress * 50)}, ${Math.floor(90 + progress * 60)}, ${Math.floor(120 + progress * 70)})`;
+        waterColor = `rgba(52, 152, 219, ${0.5 + progress * 0.2})`;
+        isNight = false;
+    } else if (timeSystem2D.currentHour >= noon && timeSystem2D.currentHour < sunset) {
+        // 下午 12:00-18:00
+        const progress = (timeSystem2D.currentHour - noon) / (sunset - noon);
+        skyColors = {
+            top: `rgb(${Math.floor(150 - progress * 50)}, ${Math.floor(180 - progress * 60)}, ${Math.floor(240 - progress * 80)})`,
+            middle: `rgb(${Math.floor(230 - progress * 60)}, ${Math.floor(230 - progress * 80)}, ${Math.floor(250 - progress * 100)})`,
+            bottom: `rgb(${Math.floor(230 - progress * 50)}, ${Math.floor(240 - progress * 60)}, ${Math.floor(250 - progress * 80)})`
+        };
+        mountainColor = `rgb(${Math.floor(120 - progress * 30)}, ${Math.floor(150 - progress * 40)}, ${Math.floor(190 - progress * 50)})`;
+        waterColor = `rgba(52, 152, 219, ${0.7 - progress * 0.2})`;
+        isNight = false;
+    } else if (timeSystem2D.currentHour >= sunset && timeSystem2D.currentHour < dusk) {
+        // 日落 18:00-19:00
+        const progress = (timeSystem2D.currentHour - sunset) / (dusk - sunset);
+        skyColors = {
+            top: `rgb(${Math.floor(100 + progress * 120)}, ${Math.floor(60 + progress * 80)}, ${Math.floor(160 - progress * 60)})`,
+            middle: `rgb(${Math.floor(170 + progress * 70)}, ${Math.floor(100 + progress * 50)}, ${Math.floor(150 - progress * 80)})`,
+            bottom: `rgb(${Math.floor(180 + progress * 60)}, ${Math.floor(120 - progress * 40)}, ${Math.floor(70 - progress * 30)})`
+        };
+        mountainColor = `rgb(${Math.floor(90 - progress * 40)}, ${Math.floor(110 - progress * 50)}, ${Math.floor(140 - progress * 60)})`;
+        waterColor = `rgba(219, 152, 52, ${0.5 + progress * 0.2})`; // 金色反射
+        isNight = false;
+    } else if (timeSystem2D.currentHour >= dusk && timeSystem2D.currentHour < night) {
+        // 黃昏 19:00-21:00
+        const progress = (timeSystem2D.currentHour - dusk) / (night - dusk);
+        skyColors = {
+            top: `rgb(${Math.floor(80 - progress * 50)}, ${Math.floor(60 - progress * 30)}, ${Math.floor(120 - progress * 40)})`,
+            middle: `rgb(${Math.floor(120 - progress * 70)}, ${Math.floor(80 - progress * 40)}, ${Math.floor(160 - progress * 70)})`,
+            bottom: `rgb(${Math.floor(140 - progress * 80)}, ${Math.floor(100 - progress * 50)}, ${Math.floor(180 - progress * 90)})`
+        };
+        mountainColor = `rgb(${Math.floor(50 - progress * 20)}, ${Math.floor(60 - progress * 25)}, ${Math.floor(80 - progress * 30)})`;
+        waterColor = `rgba(52, 152, 219, ${0.7 - progress * 0.3})`;
+        isNight = true;
+    } else {
+        // 夜晚 21:00-5:00
+        skyColors = { top: '#0a0a1a', middle: '#1a1a3e', bottom: '#2c3e60' };
+        mountainColor = '#0a0f14';
+        waterColor = 'rgba(52, 152, 219, 0.3)';
+        isNight = true;
+    }
+    
+    timeSystem2D.skyColors = skyColors;
+    timeSystem2D.mountainColor = mountainColor;
+    timeSystem2D.waterColor = waterColor;
+    timeSystem2D.isNight = isNight;
+    
+    return {
+        skyColors,
+        mountainColor,
+        waterColor,
+        isNight,
+        timeString: `${String(Math.floor(timeSystem2D.currentHour)).padStart(2, '0')}:${String(Math.floor(minute)).padStart(2, '0')}`
+    };
+}
+
 // Supabase 配置 - 在這裡直接填入您的配置
 const SUPABASE_URL = 'https://bvdgbnlzfyygosqtknaw.supabase.co'; 
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ2ZGdibmx6Znl5Z29zcXRrbmF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0NzM3OTQsImV4cCI6MjA3MDA0OTc5NH0.OYPJoXN9LNQuIfyWyDXs0V2BvdbS7Rkw-mXcVskrv4g';
@@ -68,11 +197,48 @@ class WaterLantern {
         this.angle += this.floatSpeed;
         this.driftAngle += this.rotationSpeed;
         
-        this.x = this.baseX + Math.sin(this.angle) * this.bobAmount + Math.sin(this.driftAngle) * 1;
-        this.y = this.baseY + Math.cos(this.angle * 1.3) * (this.bobAmount * 0.5) + Math.cos(this.driftAngle * 0.8) * 0.5;
+        // 原有的浮動動畫
+        const baseFloatX = Math.sin(this.angle) * this.bobAmount + Math.sin(this.driftAngle) * 1;
+        const baseFloatY = Math.cos(this.angle * 1.3) * (this.bobAmount * 0.5) + Math.cos(this.driftAngle * 0.8) * 0.5;
         
-        this.baseX += Math.sin(this.driftAngle) * this.driftSpeed * 0.1;
-        this.baseY += Math.cos(this.driftAngle) * this.driftSpeed * 0.05;
+        // 添加水流和風動效果
+        const windForceX = Math.cos(environmentSystem.windDirection) * environmentSystem.windStrength * 0.5;
+        const windForceY = Math.sin(environmentSystem.windDirection) * environmentSystem.windStrength * 0.3;
+        
+        // 湍流效果（每個水燈有不同的隨機相位）
+        const turbulenceX = Math.sin(environmentSystem.time * 0.01 + this.id) * environmentSystem.turbulenceStrength;
+        const turbulenceY = Math.cos(environmentSystem.time * 0.008 + this.id * 1.5) * environmentSystem.turbulenceStrength;
+        
+        // 組合所有效果
+        this.x = this.baseX + baseFloatX + windForceX + turbulenceX;
+        this.y = this.baseY + baseFloatY + windForceY + turbulenceY;
+        
+        // 基礎位置緩慢漂移（受水流影響）
+        this.baseX += Math.sin(this.driftAngle) * this.driftSpeed * 0.1 + environmentSystem.waterCurrentX;
+        this.baseY += Math.cos(this.driftAngle) * this.driftSpeed * 0.05 + environmentSystem.waterCurrentY;
+        
+        // 邊界約束和中心吸引力系統
+        const worldCenterX = 400;  // 湖面中心 X 坐標
+        const worldCenterY = 600;  // 湖面中心 Y 坐標
+        const maxDistance = 200;   // 最大漂移距離
+        const centerAttraction = 0.0005; // 中心吸引力強度
+        
+        // 計算距離中心的偏移
+        const offsetX = this.baseX - worldCenterX;
+        const offsetY = this.baseY - worldCenterY;
+        const distance = Math.sqrt(offsetX * offsetX + offsetY * offsetY);
+        
+        // 如果距離過遠，增強中心吸引力
+        if (distance > maxDistance) {
+            const pullStrength = (distance - maxDistance) * 0.001;
+            this.baseX -= offsetX * pullStrength;
+            this.baseY -= offsetY * pullStrength;
+        }
+        
+        // 輕微的中心吸引力（保持一半水燈在中心區域）
+        const attractionChance = this.id % 2 === 0 ? 1.5 : 0.5; // 一半水燈有更強吸引力
+        this.baseX -= offsetX * centerAttraction * attractionChance;
+        this.baseY -= offsetY * centerAttraction * attractionChance;
     }
 
     draw(ctx) {
@@ -203,6 +369,7 @@ class WaterLanternApp {
         this.setupCanvas();
         this.checkConfiguration();
         this.initAudio();
+        this.initTimeSystem();
         this.supabaseEnabled = await initSupabase();
         await this.loadLanterns();
         this.setupEventListeners();
@@ -217,6 +384,90 @@ class WaterLanternApp {
         } catch (error) {
             console.log('音頻不支持或被禁用');
             this.audioEnabled = false;
+        }
+    }
+    
+    // 初始化時間系統
+    initTimeSystem() {
+        calculateTimeBasedColors(); // 初始化時間顏色
+        this.updateTimeDisplay();
+        console.log('⏰ 時間系統初始化完成');
+    }
+    
+    // UI 更新和 FPS 計算
+    updateUI() {
+        // FPS 計算
+        const now = performance.now();
+        if (!this.lastFpsTime) this.lastFpsTime = now;
+        if (!this.fpsFrames) this.fpsFrames = 0;
+        
+        this.fpsFrames++;
+        if (now - this.lastFpsTime >= 1000) {
+            const fps = Math.round((this.fpsFrames * 1000) / (now - this.lastFpsTime));
+            const fpsElement = document.getElementById('fps');
+            if (fpsElement) fpsElement.textContent = fps;
+            
+            this.lastFpsTime = now;
+            this.fpsFrames = 0;
+        }
+        
+        // 更新數量
+        const countElement = document.getElementById('count');
+        if (countElement) countElement.textContent = this.lanterns.length;
+        
+        // 更新視角模式
+        const viewModeElement = document.getElementById('viewMode');
+        if (viewModeElement) {
+            viewModeElement.textContent = this.isPortrait ? '橫向拖拽' : '全景';
+        }
+        
+        // 更新畫布尺寸
+        const canvasSizeElement = document.getElementById('canvasSize');
+        if (canvasSizeElement) {
+            canvasSizeElement.textContent = `${this.viewport.width}x${this.viewport.height}`;
+        }
+        
+        // 更新 Debug 信息
+        this.updateDebugInfo();
+    }
+
+    // Debug 信息更新
+    updateDebugInfo() {
+        const debugMessages = [
+            `環境風力: ${environmentSystem.windStrength.toFixed(2)} | 風向: ${(environmentSystem.windDirection * 180 / Math.PI).toFixed(0)}°`,
+            `水流: X=${environmentSystem.waterCurrentX.toFixed(3)} Y=${environmentSystem.waterCurrentY.toFixed(3)}`,
+            `湍流強度: ${environmentSystem.turbulenceStrength.toFixed(2)} | 時間: ${environmentSystem.time}`,
+            `視窗: ${this.viewport.width}x${this.viewport.height} | 世界: ${this.viewport.worldWidth}x${this.viewport.worldHeight}`,
+            `視角偏移: (${this.viewport.x.toFixed(0)}, ${this.viewport.y.toFixed(0)}) | 縮放: ${this.viewport.scale.toFixed(2)}`,
+            `活動水燈: ${this.lanterns.filter(l => l.x >= this.lakeArea.x && l.x <= this.lakeArea.x + this.lakeArea.width).length}/${this.lanterns.length}`,
+            `時間系統: ${timeSystem2D.isNight ? '夜晚' : '白天'} ${timeSystem2D.currentHour.toFixed(1)}h`,
+            `性能: 幀數=${document.getElementById('fps')?.textContent || '--'} | 記憶體使用正常`
+        ];
+        
+        const currentIndex = Math.floor(Date.now() / 3000) % debugMessages.length;
+        const debugText = document.getElementById('debugText');
+        if (debugText) {
+            debugText.textContent = debugMessages[currentIndex];
+        }
+    }
+    
+    // 更新時間顯示
+    updateTimeDisplay() {
+        const timeElement = document.getElementById('currentTime');
+        if (timeElement) {
+            const colors = calculateTimeBasedColors();
+            timeElement.textContent = colors.timeString;
+            
+            // 根據是否夜晚調整顯示樣式
+            const timeDisplay = document.getElementById('timeDisplay');
+            if (timeDisplay) {
+                timeDisplay.style.background = timeSystem2D.isNight 
+                    ? 'rgba(10, 10, 30, 0.8)' 
+                    : 'rgba(0, 0, 0, 0.7)';
+                timeDisplay.style.color = timeSystem2D.isNight 
+                    ? '#aabbee' 
+                    : 'white';
+            }
         }
     }
     
@@ -336,24 +587,24 @@ class WaterLanternApp {
         this.viewport.height = windowHeight;
         
         if (this.isPortrait) {
-            // 竪屏：世界比畫布更寬，可以水平拖拽
-            this.viewport.worldWidth = windowHeight * 1.6; // 16:10 比例
-            this.viewport.worldHeight = windowHeight;
+            // 竪屏：世界比畫布更寬，主要水平拖拽
+            this.viewport.worldWidth = windowHeight * 1.8; // 增加拖拽範圍
+            this.viewport.worldHeight = windowHeight * 1.2; // 增加少量垂直拖拽
             this.viewport.scale = windowHeight / 800; // 基準高度 800
         } else {
-            // 橫屏：正常顯示
-            this.viewport.worldWidth = windowWidth;
-            this.viewport.worldHeight = windowHeight;
-            this.viewport.scale = Math.min(windowWidth / 1280, windowHeight / 800);
-            this.viewport.x = 0; // 重置偏移
+            // 橫屏：創建更大的世界空間，支持全方向拖拽
+            this.viewport.worldWidth = windowWidth * 1.5; // 更大的世界寬度
+            this.viewport.worldHeight = windowHeight * 1.5; // 更大的世界高度
+            this.viewport.scale = Math.min(windowWidth / 1920, windowHeight / 1200); // 調整基準
+            // 不重置偏移，保持用戶的拖拽位置
         }
         
-        // 更新湖面區域（基於世界坐標）
+        // 更新湖面區域（基於世界坐標）- 延伸到富士山底部
         this.lakeArea = {
-            x: this.viewport.worldWidth * 0.1,
-            y: this.viewport.worldHeight * 0.6,
-            width: this.viewport.worldWidth * 0.8,
-            height: this.viewport.worldHeight * 0.35
+            x: this.viewport.worldWidth * 0.05, // 稍微擴大左右邊界
+            y: this.viewport.worldHeight * 0.35, // 從山脚線開始
+            width: this.viewport.worldWidth * 0.9, // 更寬的湖面
+            height: this.viewport.worldHeight * 0.65 // 延伸到底部
         };
         
         // 更新光標樣式
@@ -363,18 +614,21 @@ class WaterLanternApp {
     setupDragControls() {
         // 鼠標拖拽（桌面）
         this.canvas.addEventListener('mousedown', (e) => {
-            if (this.isPortrait && !this.isAddingMode) {
+            if (!this.isAddingMode) {
                 this.isDragging = true;
                 this.lastTouchX = e.clientX;
+                this.lastTouchY = e.clientY;
                 this.updateCanvasCursor();
             }
         });
         
         this.canvas.addEventListener('mousemove', (e) => {
-            if (this.isDragging && this.isPortrait) {
+            if (this.isDragging) {
                 const deltaX = e.clientX - this.lastTouchX;
-                this.updateViewportOffset(deltaX);
+                const deltaY = e.clientY - this.lastTouchY;
+                this.updateViewportOffset(deltaX, deltaY);
                 this.lastTouchX = e.clientX;
+                this.lastTouchY = e.clientY;
             } else if (!this.isAddingMode) {
                 this.handleMouseMove(e.clientX, e.clientY);
             }
@@ -389,9 +643,10 @@ class WaterLanternApp {
         
         // 觸摸拖拽（移動設備）
         this.canvas.addEventListener('touchstart', (e) => {
-            if (this.isPortrait && !this.isAddingMode && e.touches.length === 1) {
+            if (!this.isAddingMode && e.touches.length === 1) {
                 this.isDragging = true;
                 this.lastTouchX = e.touches[0].clientX;
+                this.lastTouchY = e.touches[0].clientY;
                 e.preventDefault();
             }
         });
@@ -399,8 +654,10 @@ class WaterLanternApp {
         this.canvas.addEventListener('touchmove', (e) => {
             if (this.isDragging && e.touches.length === 1) {
                 const deltaX = e.touches[0].clientX - this.lastTouchX;
-                this.updateViewportOffset(deltaX);
+                const deltaY = e.touches[0].clientY - this.lastTouchY;
+                this.updateViewportOffset(deltaX, deltaY);
                 this.lastTouchX = e.touches[0].clientX;
+                this.lastTouchY = e.touches[0].clientY;
                 e.preventDefault();
             } else if (!this.isDragging && !this.isAddingMode && e.touches.length === 1) {
                 const touch = e.touches[0];
@@ -421,17 +678,39 @@ class WaterLanternApp {
                 e.preventDefault();
             }
         });
+
+        // 鼠標滾輪支持
+        this.canvas.addEventListener('wheel', (e) => {
+            if (!this.isAddingMode) {
+                e.preventDefault();
+                
+                // 滾輪垂直移動畫布
+                const scrollSpeed = 30;
+                const deltaY = e.deltaY > 0 ? scrollSpeed : -scrollSpeed;
+                this.updateViewportOffset(0, deltaY);
+            }
+        });
     }
     
-    updateViewportOffset(deltaX) {
-        if (!this.isPortrait) return;
+    updateViewportOffset(deltaX, deltaY = 0) {
+        // 根據屏幕方向調整拖拽行為
+        if (this.isPortrait) {
+            // 竖屏：主要水平拖拽，少量垂直拖拽
+            this.viewport.x -= deltaX;
+            this.viewport.y -= deltaY * 0.5; // 垂直拖拽減半
+        } else {
+            // 横屏：全方向拖拽
+            this.viewport.x -= deltaX;
+            this.viewport.y -= deltaY;
+        }
         
-        // 更新水平偏移
-        this.viewport.x -= deltaX;
+        // 限制水平拖拽範圍
+        const maxOffsetX = Math.max(0, this.viewport.worldWidth - this.viewport.width);
+        this.viewport.x = Math.max(0, Math.min(maxOffsetX, this.viewport.x));
         
-        // 限制拖拽範圍
-        const maxOffset = this.viewport.worldWidth - this.viewport.width;
-        this.viewport.x = Math.max(0, Math.min(maxOffset, this.viewport.x));
+        // 限制垂直拖拽範圍
+        const maxOffsetY = Math.max(0, this.viewport.worldHeight - this.viewport.height);
+        this.viewport.y = Math.max(0, Math.min(maxOffsetY, this.viewport.y));
     }
     
     // 坐標轉換：屏幕坐標 -> 世界坐標
@@ -520,21 +799,28 @@ class WaterLanternApp {
         // 清除畫布
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
+        // 更新時間光照（每30秒）
+        const now = Date.now();
+        if (now - timeSystem2D.lastUpdateTime > 30000) { // 30秒
+            calculateTimeBasedColors();
+            timeSystem2D.lastUpdateTime = now;
+        }
+        
         // 保存畫布狀態並應用視窗變換
         this.ctx.save();
         this.ctx.translate(-this.viewport.x, -this.viewport.y);
         
-        // 漸變天空背景
+        // 動態漸變天空背景
         const skyGradient = this.ctx.createLinearGradient(0, 0, 0, this.viewport.worldHeight * 0.4);
-        skyGradient.addColorStop(0, '#1a1a3e');
-        skyGradient.addColorStop(0.7, '#2c3e60');
-        skyGradient.addColorStop(1, '#34495e');
+        skyGradient.addColorStop(0, timeSystem2D.skyColors.top);
+        skyGradient.addColorStop(0.7, timeSystem2D.skyColors.middle);
+        skyGradient.addColorStop(1, timeSystem2D.skyColors.bottom);
         
         this.ctx.fillStyle = skyGradient;
         this.ctx.fillRect(0, 0, this.viewport.worldWidth, this.viewport.worldHeight * 0.35);
 
-        this.drawMountains();
         this.drawLake();
+        this.drawMountains();
         
         this.ctx.restore();
     }
@@ -542,86 +828,93 @@ class WaterLanternApp {
     drawMountains() {
         const baselineY = this.viewport.worldHeight * 0.35;
         
-        // 主富士山形狀（基於世界坐標）
-        const mainPeak = {
-            x: this.viewport.worldWidth * 0.3,
-            height: this.viewport.worldHeight * 0.28,
-            width: this.viewport.worldWidth * 0.4
+        // 富士山形狀（居中，兩邊坡度為 30 度）
+        const mountFuji = {
+            x: this.viewport.worldWidth * 0.5,  // 居中位置
+            height: this.viewport.worldHeight * 0.22, // 稍微降低高度
+            get baseWidth() { 
+                // 30度坡度：底邊寬度 = 2 * 高度 / tan(30°) = 2 * 高度 * √3
+                return 2 * this.height * Math.sqrt(3);
+            }
         };
         
-        // 繪製主山峰（類似富士山）
-        this.ctx.fillStyle = '#1a252f';
+        // 繪製富士山主體 - 30度緩坡圓錐形，與湖水自然銜接
+        this.ctx.fillStyle = timeSystem2D.mountainColor;
         this.ctx.beginPath();
-        this.ctx.moveTo(mainPeak.x - mainPeak.width/2, baselineY);
-        this.ctx.lineTo(mainPeak.x, baselineY - mainPeak.height);
-        this.ctx.lineTo(mainPeak.x + mainPeak.width/2, baselineY);
+        this.ctx.moveTo(mountFuji.x - mountFuji.baseWidth/2, baselineY);
+        this.ctx.lineTo(mountFuji.x, baselineY - mountFuji.height);
+        this.ctx.lineTo(mountFuji.x + mountFuji.baseWidth/2, baselineY);
         this.ctx.closePath();
         this.ctx.fill();
         
-        // 繪製更深色的山體陰影
-        this.ctx.fillStyle = '#0f1419';
-        this.ctx.beginPath();
-        this.ctx.moveTo(mainPeak.x, baselineY - mainPeak.height);
-        this.ctx.lineTo(mainPeak.x + mainPeak.width/2, baselineY);
-        this.ctx.lineTo(mainPeak.x + mainPeak.width/3, baselineY);
-        this.ctx.closePath();
-        this.ctx.fill();
+        // 添加山脚與湖水的過渡效果
+        const transitionGradient = this.ctx.createLinearGradient(0, baselineY - 20, 0, baselineY + 20);
+        transitionGradient.addColorStop(0, timeSystem2D.mountainColor);
+        transitionGradient.addColorStop(1, 'rgba(' + timeSystem2D.mountainColor.match(/\d+/g).join(',') + ',0.3)');
+        this.ctx.fillStyle = transitionGradient;
+        this.ctx.fillRect(mountFuji.x - mountFuji.baseWidth/2, baselineY - 20, mountFuji.baseWidth, 40);
         
-        // 左側較小的山峰
-        this.ctx.fillStyle = '#243342';
-        this.ctx.beginPath();
-        this.ctx.moveTo(0, baselineY);
-        this.ctx.lineTo(this.viewport.worldWidth * 0.15, baselineY - this.viewport.worldHeight * 0.15);
-        this.ctx.lineTo(this.viewport.worldWidth * 0.25, baselineY);
-        this.ctx.closePath();
-        this.ctx.fill();
         
-        // 右側山峰群（基於世界坐標）
-        const rightPeaks = [
-            { x: this.viewport.worldWidth * 0.6, height: this.viewport.worldHeight * 0.18 },
-            { x: this.viewport.worldWidth * 0.75, height: this.viewport.worldHeight * 0.22 },
-            { x: this.viewport.worldWidth * 0.9, height: this.viewport.worldHeight * 0.16 }
-        ];
-        
-        this.ctx.fillStyle = '#2c3e50';
+        // 繪製山體陰影（右側）
+        const shadowColor = timeSystem2D.mountainColor.replace(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/, 
+            (match, r, g, b) => `rgb(${Math.max(0, parseInt(r) - 25)}, ${Math.max(0, parseInt(g) - 30)}, ${Math.max(0, parseInt(b) - 35)})`);
+        this.ctx.fillStyle = shadowColor;
         this.ctx.beginPath();
-        this.ctx.moveTo(this.viewport.worldWidth * 0.55, baselineY);
-        rightPeaks.forEach(peak => {
-            this.ctx.lineTo(peak.x, baselineY - peak.height);
-        });
-        this.ctx.lineTo(this.viewport.worldWidth, baselineY - this.viewport.worldHeight * 0.1);
-        this.ctx.lineTo(this.viewport.worldWidth, baselineY);
-        this.ctx.closePath();
-        this.ctx.fill();
-        
-        // 添加山頂積雪效果
-        this.ctx.fillStyle = '#5a6b7c';
-        this.ctx.beginPath();
-        this.ctx.moveTo(mainPeak.x - 15, baselineY - mainPeak.height + 10);
-        this.ctx.lineTo(mainPeak.x, baselineY - mainPeak.height);
-        this.ctx.lineTo(mainPeak.x + 15, baselineY - mainPeak.height + 10);
+        this.ctx.moveTo(mountFuji.x, baselineY - mountFuji.height);
+        this.ctx.lineTo(mountFuji.x + mountFuji.baseWidth/2, baselineY);
+        this.ctx.lineTo(mountFuji.x + mountFuji.baseWidth/3, baselineY);
         this.ctx.closePath();
         this.ctx.fill();
     }
 
     drawLake() {
+        // 動態湖面漸變
         const gradient = this.ctx.createLinearGradient(0, this.lakeArea.y, 0, this.lakeArea.y + this.lakeArea.height);
-        gradient.addColorStop(0, '#34495e');
-        gradient.addColorStop(0.3, '#2c3e50');
-        gradient.addColorStop(1, '#1a252f');
+        const lakeColors = this.getLakeGradientColors();
+        gradient.addColorStop(0, lakeColors.top);
+        gradient.addColorStop(0.3, lakeColors.middle);
+        gradient.addColorStop(1, lakeColors.bottom);
         
         this.ctx.fillStyle = gradient;
         this.ctx.fillRect(this.lakeArea.x, this.lakeArea.y, this.lakeArea.width, this.lakeArea.height);
 
+        // 動態水波效果
         for (let y = this.lakeArea.y; y < this.lakeArea.y + this.lakeArea.height; y += 8) {
             for (let x = this.lakeArea.x; x < this.lakeArea.x + this.lakeArea.width; x += 16) {
                 if (Math.random() > 0.7) {
                     const waveOffset = Math.sin((Date.now() * 0.001) + (x * 0.01)) * 2;
-                    this.ctx.fillStyle = '#3a5169';
+                    this.ctx.fillStyle = timeSystem2D.waterColor;
                     this.ctx.fillRect(x, y + waveOffset, 8, 2);
                 }
             }
         }
+    }
+    
+    // 獲取湖面漸變顏色
+    getLakeGradientColors() {
+        const skyBottom = timeSystem2D.skyColors.bottom;
+        const mountain = timeSystem2D.mountainColor;
+        
+        // 將顏色稍微調暗作為湖面反射
+        const adjustColor = (colorStr, factor = 0.7) => {
+            if (colorStr.startsWith('#')) {
+                const hex = colorStr.slice(1);
+                const r = Math.floor(parseInt(hex.substring(0, 2), 16) * factor);
+                const g = Math.floor(parseInt(hex.substring(2, 4), 16) * factor);
+                const b = Math.floor(parseInt(hex.substring(4, 6), 16) * factor);
+                return `rgb(${r}, ${g}, ${b})`;
+            } else if (colorStr.startsWith('rgb')) {
+                return colorStr.replace(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/, 
+                    (match, r, g, b) => `rgb(${Math.floor(parseInt(r) * factor)}, ${Math.floor(parseInt(g) * factor)}, ${Math.floor(parseInt(b) * factor)})`);
+            }
+            return colorStr;
+        };
+        
+        return {
+            top: adjustColor(skyBottom, 0.8),
+            middle: adjustColor(mountain, 0.9),
+            bottom: adjustColor(mountain, 0.6)
+        };
     }
 
     isInLake(screenX, screenY) {
@@ -1015,6 +1308,9 @@ class WaterLanternApp {
         
         this.lanterns.sort((a, b) => a.depth - b.depth);
         
+        // 更新環境效果
+        updateEnvironment();
+        
         this.lanterns.forEach(lantern => {
             // 只繪製在可見範圍內的水燈
             const screenPos = this.worldToScreen(lantern.x, lantern.y);
@@ -1027,40 +1323,72 @@ class WaterLanternApp {
         
         this.ctx.restore();
         
-        // 繪製拖拽提示（竪屏時）
-        if (this.isPortrait) {
-            this.drawPanHint();
-        }
+        // 繪製拖拽提示
+        this.drawPanHint();
         
         if (this.frameCount % 300 === 0) {
             this.saveLanterns();
         }
+        
+        // 每 5 秒更新一次時間顯示（300 frames）
+        if (this.frameCount % 300 === 0) {
+            this.updateTimeDisplay();
+        }
+        
         this.frameCount = (this.frameCount || 0) + 1;
+
+        // FPS 計算和界面更新
+        this.updateUI();
 
         requestAnimationFrame(() => this.gameLoop());
     }
     
     drawPanHint() {
-        // 竪屏時顯示拖拽提示
+        // 顯示拖拽提示和位置指示器
         if (!this.isDragging) {
             this.ctx.save();
             this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
             this.ctx.font = '14px monospace';
             this.ctx.textAlign = 'center';
-            this.ctx.fillText('← 拖拽查看完整景色 →', this.viewport.width / 2, this.viewport.height - 30);
             
-            // 滾動條指示器
-            const scrollBarWidth = this.viewport.width - 40;
-            const scrollProgress = this.viewport.x / (this.viewport.worldWidth - this.viewport.width);
-            
-            // 滾動條背景
-            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-            this.ctx.fillRect(20, this.viewport.height - 15, scrollBarWidth, 4);
-            
-            // 滾動條位置指示器
-            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-            const indicatorX = 20 + scrollProgress * scrollBarWidth;
-            this.ctx.fillRect(indicatorX - 10, this.viewport.height - 17, 20, 8);
+            if (this.isPortrait) {
+                // 竖屏：只显示滾動條指示器，不显示文字提示（避免与Debug信息重叠）
+                const scrollBarWidth = this.viewport.width - 40;
+                const maxOffsetX = Math.max(1, this.viewport.worldWidth - this.viewport.width);
+                const scrollProgress = this.viewport.x / maxOffsetX;
+                
+                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                this.ctx.fillRect(20, this.viewport.height - 60, scrollBarWidth, 4);
+                
+                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                const indicatorX = 20 + scrollProgress * scrollBarWidth;
+                this.ctx.fillRect(indicatorX - 10, this.viewport.height - 62, 20, 8);
+            } else {
+                // 横屏：全方向拖拽提示
+                this.ctx.fillText('🖱️ 拖拽移動 | 滾輪上下 | 探索完整場景', this.viewport.width / 2, this.viewport.height - 55);
+                
+                // 位置指示器（右下角小地图样式）
+                const mapSize = 80;
+                const mapX = this.viewport.width - mapSize - 20;
+                const mapY = this.viewport.height - mapSize - 20;
+                
+                // 地图背景
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                this.ctx.fillRect(mapX, mapY, mapSize, mapSize);
+                
+                // 当前视口位置
+                const viewX = (this.viewport.x / this.viewport.worldWidth) * mapSize;
+                const viewY = (this.viewport.y / this.viewport.worldHeight) * mapSize;
+                const viewW = (this.viewport.width / this.viewport.worldWidth) * mapSize;
+                const viewH = (this.viewport.height / this.viewport.worldHeight) * mapSize;
+                
+                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                this.ctx.fillRect(mapX + viewX, mapY + viewY, viewW, viewH);
+                
+                // 地图边框
+                this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                this.ctx.strokeRect(mapX, mapY, mapSize, mapSize);
+            }
             
             this.ctx.restore();
         }
@@ -1069,7 +1397,7 @@ class WaterLanternApp {
     updateCanvasCursor() {
         if (this.isAddingMode) {
             this.canvas.style.cursor = 'crosshair';
-        } else if (this.isPortrait && !this.isDragging) {
+        } else if (!this.isDragging) {
             this.canvas.style.cursor = 'grab';
         } else if (this.isDragging) {
             this.canvas.style.cursor = 'grabbing';  
