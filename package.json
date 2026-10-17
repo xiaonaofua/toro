@@ -1,63 +1,26 @@
 {
-  "name": "water-lantern-3d-app",
-  "version": "2.0.0",
-  "description": "革新的3D互動式放水燈遊戲 - 使用最新3D遊戲引擎技術",
-  "main": "index3d.html",
+  "name": "toro-water-lantern",
+  "version": "3.0.0",
+  "description": "3D 互動放水燈網頁（Three.js + Supabase）",
+  "main": "index.html",
   "scripts": {
-    "start": "python -m http.server 8080",
-    "dev": "python -m http.server 8080",
-    "serve": "python -m http.server 8080",
-    "start:2d": "node server.js",
-    "preview": "python -m http.server 3000",
-    "build": "echo 'Building 3D Water Lantern Game...' && echo 'Build completed!'",
-    "test": "echo 'Testing 3D features...' && echo 'All tests passed!'"
+    "start": "python -m http.server 8080"
   },
   "keywords": [
-    "3d-game", 
-    "babylonjs", 
-    "webgl", 
-    "water-simulation", 
-    "interactive", 
-    "web-app", 
-    "3d-graphics", 
-    "real-time-rendering",
+    "three.js",
+    "webgl",
     "water-lantern",
-    "chinese-culture"
+    "toro-nagashi",
+    "3d"
   ],
-  "author": "3D Game Developer",
+  "author": "",
   "license": "MIT",
-  "engines": {
-    "node": ">=14.0.0"
-  },
-  "devDependencies": {},
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0"
   },
-  "peerDependencies": {
-    "babylonjs": "^6.0.0",
-    "babylonjs-materials": "^6.0.0",
-    "babylonjs-loaders": "^6.0.0"
-  },
-  "files": [
-    "index3d.html",
-    "app3d.js", 
-    "babylon.config.js",
-    "index.html",
-    "app.js",
-    "README.md"
-  ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/water-lantern-3d.git"
+    "url": "https://github.com/xiaonaofua/toro.git"
   },
-  "homepage": "https://your-username.github.io/water-lantern-3d/",
-  "browserslist": [
-    "> 1%",
-    "last 2 versions",
-    "not dead",
-    "not ie <= 11"
-  ],
-  "babel": {
-    "presets": ["@babel/preset-env"]
-  }
+  "homepage": "https://xiaonaofua.github.io/toro/"
 }
