@@ -1007,8 +1007,13 @@ function createHeldToro() {
     return group;
 }
 
-// 穿浴衣的人（低多邊形、風格化）。面向 -z（看向湖）。
-function createPerson({ pose = 'stand', robe, obi, hair = '#17110d', skin = '#e3bf9c', scale = 1, holding = null }) {
+// 岸上的人（低多邊形、風格化）。面向 -z（看向湖）。
+// outfit：yukata 浴衣 / suit 西裝 / tshirt T 恤 / dress 洋裝
+// hairStyle：bun 盤髮 / short 短髮 / long 長髮 / curly 捲髮 / buzz 平頭
+function createPerson({
+    pose = 'stand', outfit = 'yukata', top, bottom = '#2d3446', accent = '#e8c35a',
+    hair = '#17110d', hairStyle = 'short', skin = '#e3bf9c', shorts = false, scale = 1, holding = null
+}) {
     const root = new THREE.Group();
     const add = (geometry, color, x, y, z, parent = root) => {
         const mesh = new THREE.Mesh(geometry, lambert(color));
@@ -1016,32 +1021,70 @@ function createPerson({ pose = 'stand', robe, obi, hair = '#17110d', skin = '#e3
         parent.add(mesh);
         return mesh;
     };
+    const shoe = outfit === 'yukata' ? '#2a2018' : outfit === 'suit' ? '#141110' : '#e6e2da';
+
     const addHead = (parent, y) => {
         add(new THREE.SphereGeometry(0.125, 14, 10), skin, 0, y, 0, parent);
-        add(new THREE.SphereGeometry(0.133, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hair, 0, y + 0.012, 0.012, parent);
-        add(new THREE.SphereGeometry(0.06, 10, 8), hair, 0, y + 0.1, 0.09, parent);
+        const cap = { buzz: 0.42, short: 0.55, bun: 0.55, long: 0.58, curly: 0.6 }[hairStyle] ?? 0.55;
+        const r = hairStyle === 'buzz' ? 0.128 : 0.134;
+        add(new THREE.SphereGeometry(r, 14, 10, 0, Math.PI * 2, 0, Math.PI * cap), hair, 0, y + 0.012, 0.012, parent);
+        if (hairStyle === 'bun') add(new THREE.SphereGeometry(0.06, 10, 8), hair, 0, y + 0.1, 0.09, parent);
+        if (hairStyle === 'long') add(new THREE.BoxGeometry(0.24, 0.32, 0.08), hair, 0, y - 0.1, 0.1, parent);
+        if (hairStyle === 'curly') {
+            for (let i = 0; i < 7; i++) {
+                const a = (i / 7) * Math.PI * 2;
+                add(new THREE.SphereGeometry(0.06, 8, 6), hair, Math.cos(a) * 0.1, y + 0.07, Math.sin(a) * 0.1 + 0.02, parent);
+            }
+        }
     };
+
+    // 手臂：浴衣是寬袖，西裝是長袖，T 恤是短袖露出前臂
     const addArm = (parent, side, x, y, z, swing) => {
         const pivot = new THREE.Group();
         pivot.position.set(side * x, y, z);
         pivot.rotation.set(swing, 0, side * 0.08);
-        add(new THREE.BoxGeometry(0.13, 0.42, 0.24), robe, 0, -0.2, 0.02, pivot);
+        if (outfit === 'yukata') {
+            add(new THREE.BoxGeometry(0.13, 0.42, 0.24), top, 0, -0.2, 0.02, pivot);
+        } else if (outfit === 'suit') {
+            add(new THREE.CylinderGeometry(0.06, 0.055, 0.42, 8), top, 0, -0.2, 0, pivot);
+        } else {
+            add(new THREE.CylinderGeometry(0.065, 0.062, 0.16, 8), top, 0, -0.07, 0, pivot);
+            add(new THREE.CylinderGeometry(0.045, 0.04, 0.3, 8), skin, 0, -0.29, 0, pivot);
+        }
         add(new THREE.SphereGeometry(0.045, 8, 6), skin, 0, -0.45, -0.02, pivot);
         parent.add(pivot);
         return pivot;
     };
 
+    // 上半身（腰帶 / 皮帶 + 軀幹 + 領口細節）
+    const addTorso = (parent, y0) => {
+        if (outfit === 'yukata') {
+            add(new THREE.CylinderGeometry(0.205, 0.2, 0.16, 12), accent, 0, y0, 0, parent);
+            add(new THREE.CylinderGeometry(0.2, 0.2, 0.36, 12), top, 0, y0 + 0.25, 0, parent);
+            return;
+        }
+        if (outfit !== 'dress') add(new THREE.CylinderGeometry(0.17, 0.17, 0.05, 12), outfit === 'suit' ? '#111' : '#3a2c22', 0, y0 - 0.02, 0, parent);
+        add(new THREE.CylinderGeometry(0.2, 0.17, 0.44, 12), top, 0, y0 + 0.22, 0, parent);
+        if (outfit === 'suit') {
+            add(new THREE.BoxGeometry(0.1, 0.22, 0.02), '#f2f0ea', 0, y0 + 0.32, -0.19, parent);
+            add(new THREE.BoxGeometry(0.035, 0.2, 0.02), accent, 0, y0 + 0.3, -0.2, parent);
+        }
+    };
+
     const person = { root, pose, arms: [], upper: null, held: null, releaseT: -1, seed: rand(0, 100) };
 
     if (pose === 'crouch') {
-        const skirt = add(new THREE.CylinderGeometry(0.26, 0.34, 0.42, 12), robe, 0, 0.21, 0.02);
+        const lowerColor = outfit === 'yukata' || outfit === 'dress' ? (outfit === 'yukata' ? top : bottom) : bottom;
+        const skirt = add(new THREE.CylinderGeometry(0.24, 0.32, 0.42, 12), lowerColor, 0, 0.21, 0.02);
         skirt.scale.z = 1.25;
-        for (const s of [-1, 1]) add(new THREE.SphereGeometry(0.13, 10, 8), robe, s * 0.12, 0.42, -0.2);
+        for (const s of [-1, 1]) {
+            add(new THREE.SphereGeometry(0.13, 10, 8), lowerColor, s * 0.12, 0.42, -0.2);
+            if (outfit !== 'yukata') add(new THREE.BoxGeometry(0.1, 0.07, 0.24), shoe, s * 0.12, 0.035, -0.12);
+        }
         const upper = new THREE.Group();
         upper.position.set(0, 0.42, 0.02);
         upper.rotation.x = -0.5;
-        add(new THREE.CylinderGeometry(0.2, 0.21, 0.14, 12), obi, 0, 0.07, 0, upper);
-        add(new THREE.CylinderGeometry(0.19, 0.2, 0.36, 12), robe, 0, 0.3, 0, upper);
+        addTorso(upper, 0.07);
         addHead(upper, 0.62);
         for (const s of [-1, 1]) person.arms.push(addArm(upper, s, 0.23, 0.45, 0, 1.4));
         root.add(upper);
@@ -1052,10 +1095,24 @@ function createPerson({ pose = 'stand', robe, obi, hair = '#17110d', skin = '#e3
             root.add(person.held);
         }
     } else {
-        for (const s of [-1, 1]) add(new THREE.BoxGeometry(0.09, 0.06, 0.2), '#2a2018', s * 0.09, 0.03, -0.03);
-        add(new THREE.CylinderGeometry(0.19, 0.27, 1.0, 12), robe, 0, 0.55, 0);
-        add(new THREE.CylinderGeometry(0.205, 0.2, 0.16, 12), obi, 0, 1.0, 0);
-        add(new THREE.CylinderGeometry(0.2, 0.2, 0.36, 12), robe, 0, 1.25, 0);
+        for (const s of [-1, 1]) add(new THREE.BoxGeometry(0.1, 0.07, 0.22), shoe, s * 0.09, 0.035, -0.03);
+        if (outfit === 'yukata') {
+            add(new THREE.CylinderGeometry(0.19, 0.27, 1.0, 12), top, 0, 0.55, 0);
+        } else if (outfit === 'dress') {
+            for (const s of [-1, 1]) add(new THREE.CylinderGeometry(0.05, 0.045, 0.5, 8), skin, s * 0.08, 0.3, 0);
+            add(new THREE.CylinderGeometry(0.18, 0.3, 0.5, 14), bottom, 0, 0.78, 0);
+        } else {
+            for (const s of [-1, 1]) {
+                const legX = s * 0.085;
+                if (shorts) {
+                    add(new THREE.CylinderGeometry(0.075, 0.072, 0.32, 8), bottom, legX, 0.86, 0);
+                    add(new THREE.CylinderGeometry(0.055, 0.05, 0.62, 8), skin, legX, 0.38, 0);
+                } else {
+                    add(new THREE.CylinderGeometry(0.078, 0.07, 0.96, 8), bottom, legX, 0.54, 0);
+                }
+            }
+        }
+        addTorso(root, 1.0);
         const upper = new THREE.Group();
         addHead(upper, 1.6);
         root.add(upper);
@@ -1152,18 +1209,25 @@ function createShore(scene) {
     };
     const deck = PIER.deckY + 0.035;
     const releasers = [
-        { person: place({ pose: 'crouch', robe: '#2c3a6b', obi: '#e8c35a', holding: 'toro' }, PIER.x - 0.4, deck, PIER.tipZ + 0.55), height: deck + 0.25 },
-        { person: place({ pose: 'crouch', robe: '#3f5a4a', obi: '#d9a7b0', holding: 'toro' }, stepX, 0.23, stepEdge - 1.95), height: 0.5 },
-        { person: place({ pose: 'crouch', robe: '#c9b48a', obi: '#5a2f3a', holding: 'toro' }, slabX, 0.31, slabEdge - 1.3, 0.2), height: 0.58 }
+        // 棧橋尖端：金髮、藍 T 恤配牛仔褲
+        { person: place({ pose: 'crouch', outfit: 'tshirt', top: '#2f6db5', bottom: '#33415c', hair: '#d9b56a', hairStyle: 'short', skin: '#f1d3bd', holding: 'toro' }, PIER.x - 0.4, deck, PIER.tipZ + 0.55), height: deck + 0.25 },
+        // 石階：綠色浴衣、黑色盤髮
+        { person: place({ pose: 'crouch', outfit: 'yukata', top: '#3f5a4a', accent: '#d9a7b0', hair: '#17110d', hairStyle: 'bun', skin: '#e3bf9c', holding: 'toro' }, stepX, 0.23, stepEdge - 1.95), height: 0.5 },
+        // 平石：紅 T 恤卡其褲、黑色捲髮
+        { person: place({ pose: 'crouch', outfit: 'tshirt', top: '#c0392b', bottom: '#a08d6a', hair: '#1a1410', hairStyle: 'curly', skin: '#5a3a26', holding: 'toro' }, slabX, 0.31, slabEdge - 1.3, 0.2), height: 0.58 }
     ];
-    place({ pose: 'stand', robe: '#e6e0d4', obi: '#b8322c', holding: 'chochin' }, PIER.x + 0.65, deck, PIER.tipZ + 1.4, -0.15);
-    place({ pose: 'stand', robe: '#8a3b4f', obi: '#f0d58a' }, PIER.x - 0.5, deck, PIER.tipZ + 5.2, 0.1);
-    place({ pose: 'stand', robe: '#ea8fa4', obi: '#fff3c8', scale: 0.62 }, PIER.x + 0.15, deck, PIER.tipZ + 5.4, -0.05);
-    place({ pose: 'stand', robe: '#23233a', obi: '#c8a26a', holding: 'chochin' }, stepX + 1.6, LAND_Y, stepEdge + 1.1, -0.3);
-    place({ pose: 'stand', robe: '#1f2f4f', obi: '#e0b860' }, -16, LAND_Y, shoreEdge(-16) + 1.6, 0.15);
-    place({ pose: 'stand', robe: '#d97a6a', obi: '#3a2a4a', holding: 'chochin' }, -15.3, LAND_Y, shoreEdge(-15.3) + 1.7, 0.1);
-    place({ pose: 'stand', robe: '#5b4a6b', obi: '#e8d6a8' }, 29, LAND_Y, shoreEdge(29) + 2.1, -0.4);
-    place({ pose: 'stand', robe: '#e6e0d4', obi: '#2c3a6b', scale: 0.65 }, 28.4, LAND_Y, shoreEdge(28.4) + 2.0, -0.4);
+    // 棧橋上
+    place({ pose: 'stand', outfit: 'yukata', top: '#e6e0d4', accent: '#b8322c', hair: '#17110d', hairStyle: 'bun', skin: '#e3bf9c', holding: 'chochin' }, PIER.x + 0.65, deck, PIER.tipZ + 1.4, -0.15);
+    place({ pose: 'stand', outfit: 'suit', top: '#2b2f36', bottom: '#2b2f36', accent: '#9b2335', hair: '#a9a9a9', hairStyle: 'short', skin: '#c99a6e' }, PIER.x - 0.5, deck, PIER.tipZ + 5.2, 0.1);
+    place({ pose: 'stand', outfit: 'tshirt', top: '#f2c14e', bottom: '#3b5998', shorts: true, hair: '#2a1a12', hairStyle: 'curly', skin: '#8d5a3b', scale: 0.62 }, PIER.x + 0.15, deck, PIER.tipZ + 5.4, -0.05);
+    place({ pose: 'stand', outfit: 'dress', top: '#7a1f3d', bottom: '#7a1f3d', hair: '#9c4a22', hairStyle: 'long', skin: '#f1d3bd' }, PIER.x + 0.6, deck, PIER.tipZ + 8.2, -0.2);
+    place({ pose: 'stand', outfit: 'tshirt', top: '#f4f1ea', bottom: '#56606e', shorts: true, hair: '#4a2e1c', hairStyle: 'buzz', skin: '#e0b48f' }, PIER.x - 0.55, deck, PIER.tipZ + 8.6, 0.25);
+    // 岸上
+    place({ pose: 'stand', outfit: 'suit', top: '#1f2f4f', bottom: '#1f2f4f', accent: '#c8a26a', hair: '#6b4226', hairStyle: 'short', skin: '#f1d3bd', holding: 'chochin' }, stepX + 1.6, LAND_Y, stepEdge + 1.1, -0.3);
+    place({ pose: 'stand', outfit: 'tshirt', top: '#2e8b57', bottom: '#2d3446', hair: '#17110d', hairStyle: 'long', skin: '#5a3a26' }, -16, LAND_Y, shoreEdge(-16) + 1.6, 0.15);
+    place({ pose: 'stand', outfit: 'yukata', top: '#d97a6a', accent: '#3a2a4a', hair: '#d9b56a', hairStyle: 'bun', skin: '#f1d3bd', holding: 'chochin' }, -15.3, LAND_Y, shoreEdge(-15.3) + 1.7, 0.1);
+    place({ pose: 'stand', outfit: 'dress', top: '#5b4a6b', bottom: '#5b4a6b', hair: '#17110d', hairStyle: 'long', skin: '#c99a6e' }, 29, LAND_Y, shoreEdge(29) + 2.1, -0.4);
+    place({ pose: 'stand', outfit: 'dress', top: '#9ec9e8', bottom: '#9ec9e8', hair: '#d9b56a', hairStyle: 'long', skin: '#f1d3bd', scale: 0.65 }, 28.4, LAND_Y, shoreEdge(28.4) + 2.0, -0.4);
 
     // 每個蹲著的人前方的放燈點（世界座標）
     releasers.forEach((r) => {
