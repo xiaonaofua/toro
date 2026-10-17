@@ -443,8 +443,8 @@ const RING_TEXTURE = radialTexture([
 ]);
 
 const LANTERN_HALF = 0.68;
-// 水燈整體縮放：和岸上的人比起來大約是一個小木盒的大小
-const LANTERN_SCALE = 0.42;
+// 水燈整體縮放：寬約 0.39，跟身高 1.7 的人比起來約 30 公分的真實大小
+const LANTERN_SCALE = 0.25;
 
 function createWoodGeometry() {
     const parts = [];
@@ -614,7 +614,7 @@ class Lantern {
             transparent: true,
             fog: false
         }));
-        this.glow.scale.setScalar(1.7);
+        this.glow.scale.setScalar(1.1);
 
         this.pool = new THREE.Mesh(POOL_GEOMETRY, new THREE.MeshBasicMaterial({
             map: POOL_TEXTURE,
@@ -624,7 +624,7 @@ class Lantern {
             transparent: true,
             fog: false
         }));
-        this.pool.scale.setScalar(3.0);
+        this.pool.scale.setScalar(2.0);
 
         scene.add(this.group, this.glow, this.pool);
 
@@ -709,9 +709,9 @@ class Lantern {
                 this.tiltX += 0.06 * Math.exp(-s * 1.2) * Math.sin(s * 4.3) * dt * 10;
                 if (!this.splashed) {
                     this.splashed = true;
-                    ctx.ripples.spawn(this.x, this.z, 0.55, 1.3);
-                    ctx.ripples.spawn(this.x, this.z, 0.35, 0.8, 0.5);
-                    ctx.ripples.spawn(this.x, this.z, 0.2, 0.5, 1.1);
+                    ctx.ripples.spawn(this.x, this.z, 0.55, 0.9);
+                    ctx.ripples.spawn(this.x, this.z, 0.35, 0.55, 0.5);
+                    ctx.ripples.spawn(this.x, this.z, 0.2, 0.35, 1.1);
                 }
                 if (s > 6) this.dropTime = -1;
             }
@@ -733,9 +733,9 @@ class Lantern {
         const bright = this.light * f;
 
         this.paperMaterial.color.copy(this.paperTint).multiplyScalar(lerp(1.0, 1.15, ctx.night) * (0.35 + 0.65 * bright));
-        this.glow.position.set(this.x, y + 0.33, this.z);
+        this.glow.position.set(this.x, y + 0.2, this.z);
         this.glow.material.opacity = 0.9 * bright * glowBoost * distanceFade;
-        this.glow.scale.setScalar(1.6 + 0.12 * f);
+        this.glow.scale.setScalar(1.05 + 0.08 * f);
         this.pool.position.set(this.x, 0.03, this.z);
         this.pool.material.opacity = 0.32 * bright * glowBoost * distanceFade;
 
@@ -743,7 +743,7 @@ class Lantern {
         this.nextRipple -= dt;
         if (this.nextRipple <= 0) {
             this.nextRipple = rand(5, 11);
-            if (distance < 120) ctx.ripples.spawn(this.x, this.z, 0.12, 0.9);
+            if (distance < 120) ctx.ripples.spawn(this.x, this.z, 0.12, 0.6);
         }
 
         // 漂到遠處：退役的水燈消失，其他水燈回到岸邊，等人再放一次
@@ -757,7 +757,7 @@ class Lantern {
     }
 
     worldAnchor(target) {
-        return target.set(this.x, this.group.position.y + 1.0, this.z);
+        return target.set(this.x, this.group.position.y + 0.6, this.z);
     }
 
     dispose() {
@@ -820,7 +820,7 @@ class Ripples {
                 continue;
             }
             item.mesh.visible = true;
-            item.mesh.scale.setScalar(0.9 + p * 6 * item.size);
+            item.mesh.scale.setScalar(0.5 + p * 6 * item.size);
             item.mesh.material.opacity = item.strength * brightness * Math.pow(1 - p, 2) * smoothstep(0, 0.08, p);
         }
     }
@@ -1064,7 +1064,7 @@ function createHeldToro() {
         transparent: true,
         fog: false
     }));
-    glow.scale.setScalar(1.3 / LANTERN_SCALE);
+    glow.scale.setScalar(0.8 / LANTERN_SCALE);
     glow.position.y = 0.8;
     group.add(glow);
     group.userData = { paper, glow };
@@ -1276,8 +1276,8 @@ function animatePerson(p, dt, t) {
     });
 
     if (p.held) {
-        // 托在掌上：站著時在胸前，蹲下時貼近水面
-        p.held.position.set(0, lerp(0.98, 0.34, c) - 0.1 * reach, lerp(-0.38, -0.75, c) - 0.2 * reach);
+        // 托在掌心上：站著時在胸前，蹲下時貼近水面，放燈時再往前送
+        p.held.position.set(0, lerp(1.14, 0.52, c) - 0.14 * reach, lerp(-0.38, -0.58, c) - 0.12 * reach);
     }
 
     if (p.faceYaw !== null && !p.path) {
@@ -1532,7 +1532,7 @@ function createShore(scene) {
                 lantern.vz = Math.min(lantern.vz, 0);
             }
             const dx = lantern.x - PIER.x;
-            const clearance = PIER.halfW + 0.55;
+            const clearance = PIER.halfW + 0.35;
             if (lantern.z > PIER.tipZ + 0.1 && Math.abs(dx) < clearance) {
                 lantern.x = PIER.x + Math.sign(dx || 1) * clearance;
             }
@@ -2252,7 +2252,7 @@ let firstFrame = true;
 
 function separate() {
     // 水燈彼此輕輕推開，不會疊在一起
-    const minDist = 1.4;
+    const minDist = 0.9;
     for (let i = 0; i < lanterns.length; i++) {
         const a = lanterns[i];
         a.pushX = 0;
