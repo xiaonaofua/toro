@@ -1,348 +1,367 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🏮 水燈祈願 - 選擇體驗版本</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>放水燈</title>
+    <meta name="description" content="3D 互動放水燈：寫下心願，讓水燈隨水流漂向遠方">
+    <link rel="icon" href="data:,">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        :root {
+            --ink: #f6ead7;
+            --ink-dim: rgba(246, 234, 215, 0.62);
+            --glass: rgba(10, 16, 32, 0.52);
+            --glass-strong: rgba(10, 16, 32, 0.82);
+            --line: rgba(255, 214, 160, 0.22);
+            --amber: #ffb766;
+            --amber-deep: #e88a3a;
+            --serif: "Noto Serif TC", "Songti TC", "Source Han Serif TC", "PMingLiU", "Hiragino Mincho ProN", serif;
         }
 
-        body {
-            font-family: 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-            min-height: 100vh;
+        * { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            height: 100%;
+            overflow: hidden;
+            background: #050913;
+            color: var(--ink);
+            font-family: var(--serif);
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #scene {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            touch-action: none;
+            outline: none;
+        }
+
+        body.placing #scene { cursor: crosshair; }
+        body.hovering #scene { cursor: pointer; }
+
+        /* 標題 */
+        #title {
+            position: fixed;
+            top: max(18px, env(safe-area-inset-top));
+            left: 22px;
+            pointer-events: none;
+            text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+        }
+        #title h1 {
+            margin: 0;
+            font-size: 26px;
+            font-weight: 600;
+            letter-spacing: 0.3em;
+        }
+        #title p {
+            margin: 6px 0 0;
+            font-size: 13px;
+            letter-spacing: 0.15em;
+            color: var(--ink-dim);
+        }
+
+        /* 底部操作 */
+        #dock {
+            position: fixed;
+            left: 50%;
+            bottom: max(26px, env(safe-area-inset-bottom));
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            transition: opacity 0.4s, transform 0.4s;
+        }
+        body.placing #dock, body.writing #dock {
+            opacity: 0;
+            pointer-events: none;
+            transform: translate(-50%, 12px);
+        }
+
+        #releaseBtn {
+            font-family: inherit;
+            font-size: 16px;
+            letter-spacing: 0.25em;
+            color: #2b1606;
+            background: linear-gradient(180deg, #ffd79a, var(--amber));
+            border: none;
+            border-radius: 999px;
+            padding: 13px 30px 13px 34px;
+            cursor: pointer;
+            box-shadow: 0 0 28px rgba(255, 170, 80, 0.45), 0 6px 18px rgba(0, 0, 0, 0.35);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        #releaseBtn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 0 40px rgba(255, 170, 80, 0.6), 0 8px 22px rgba(0, 0, 0, 0.4);
+        }
+
+        #count {
+            font-size: 12px;
+            letter-spacing: 0.15em;
+            color: var(--ink-dim);
+            text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6);
+        }
+
+        /* 放置提示 */
+        #placeHint {
+            position: fixed;
+            left: 50%;
+            bottom: max(30px, env(safe-area-inset-bottom));
+            transform: translate(-50%, 12px);
             display: flex;
             align-items: center;
-            justify-content: center;
-            color: white;
-            overflow: hidden;
-        }
-
-        /* 動態背景效果 */
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: 
-                radial-gradient(circle at 20% 30%, rgba(255, 204, 102, 0.1) 0%, transparent 50%),
-                radial-gradient(circle at 80% 70%, rgba(102, 204, 255, 0.1) 0%, transparent 50%),
-                radial-gradient(circle at 60% 20%, rgba(255, 153, 204, 0.1) 0%, transparent 50%);
-            animation: float 20s ease-in-out infinite;
-            z-index: -1;
-        }
-
-        @keyframes float {
-            0%, 100% { transform: translateY(0px) rotate(0deg); }
-            33% { transform: translateY(-20px) rotate(1deg); }
-            66% { transform: translateY(-10px) rotate(-1deg); }
-        }
-
-        .container {
-            text-align: center;
-            max-width: 800px;
-            padding: 40px 20px;
-            position: relative;
-            z-index: 1;
-        }
-
-        .title {
-            font-size: 3.5em;
-            font-weight: 300;
-            margin-bottom: 20px;
-            background: linear-gradient(45deg, #ffcc66, #ff9966, #ff6699);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            text-shadow: 0 4px 20px rgba(255, 204, 102, 0.3);
-            animation: glow 3s ease-in-out infinite alternate;
-        }
-
-        @keyframes glow {
-            from { text-shadow: 0 4px 20px rgba(255, 204, 102, 0.3); }
-            to { text-shadow: 0 4px 40px rgba(255, 204, 102, 0.6); }
-        }
-
-        .subtitle {
-            font-size: 1.3em;
-            margin-bottom: 50px;
-            color: #b8c6db;
-            font-weight: 300;
-            line-height: 1.6;
-        }
-
-        .version-container {
-            display: flex;
-            gap: 40px;
-            justify-content: center;
-            align-items: stretch;
-            flex-wrap: wrap;
-            margin-bottom: 40px;
-        }
-
-        .version-card {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(15px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
-            padding: 40px 30px;
-            width: 300px;
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            cursor: pointer;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .version-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-            transition: left 0.6s;
-        }
-
-        .version-card:hover::before {
-            left: 100%;
-        }
-
-        .version-card:hover {
-            transform: translateY(-10px) scale(1.02);
-            border-color: rgba(255, 204, 102, 0.5);
-            box-shadow: 
-                0 20px 40px rgba(0, 0, 0, 0.3),
-                0 0 30px rgba(255, 204, 102, 0.2);
-        }
-
-        .version-icon {
-            font-size: 4em;
-            margin-bottom: 20px;
-            display: block;
-            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
-        }
-
-        .version-title {
-            font-size: 1.8em;
-            font-weight: 600;
-            margin-bottom: 15px;
-            color: #ffffff;
-        }
-
-        .version-description {
-            color: #b8c6db;
-            line-height: 1.6;
-            margin-bottom: 25px;
-            font-size: 1em;
-        }
-
-        .version-features {
-            list-style: none;
-            text-align: left;
-            margin-bottom: 25px;
-        }
-
-        .version-features li {
-            padding: 5px 0;
-            color: #a8b8c8;
-            font-size: 0.9em;
-        }
-
-        .version-features li::before {
-            content: '✦ ';
-            color: #ffcc66;
-            margin-right: 8px;
-        }
-
-        .start-btn {
-            background: linear-gradient(45deg, #ff6b6b, #feca57);
-            border: none;
-            border-radius: 50px;
-            padding: 15px 30px;
-            color: white;
-            font-weight: 600;
-            font-size: 1.1em;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            width: 100%;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .start-btn:hover {
-            background: linear-gradient(45deg, #ff5252, #ffc107);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(255, 107, 107, 0.4);
-        }
-
-        .version-card.v2d .start-btn {
-            background: linear-gradient(45deg, #667eea, #764ba2);
-        }
-
-        .version-card.v2d .start-btn:hover {
-            background: linear-gradient(45deg, #5a6fd8, #6a4190);
-            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
-        }
-
-        .info-text {
-            margin-top: 40px;
-            color: #8892b0;
-            font-size: 0.95em;
-            line-height: 1.6;
-        }
-
-        /* 響應式設計 */
-        @media (max-width: 768px) {
-            .title {
-                font-size: 2.5em;
-            }
-            
-            .version-container {
-                flex-direction: column;
-                align-items: center;
-                gap: 30px;
-            }
-            
-            .version-card {
-                width: 100%;
-                max-width: 350px;
-            }
-            
-            .container {
-                padding: 30px 15px;
-            }
-        }
-
-        /* 浮動水燈動畫效果 */
-        .floating-lantern {
-            position: fixed;
-            width: 20px;
-            height: 20px;
-            background: radial-gradient(circle, #ffcc66 20%, transparent 70%);
-            border-radius: 50%;
+            gap: 14px;
+            padding: 10px 12px 10px 22px;
+            border-radius: 999px;
+            background: var(--glass);
+            border: 1px solid var(--line);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            font-size: 14px;
+            letter-spacing: 0.12em;
+            opacity: 0;
             pointer-events: none;
-            z-index: 0;
-            animation: floatUp 15s linear infinite;
-            opacity: 0.6;
+            transition: opacity 0.4s, transform 0.4s;
+        }
+        body.placing #placeHint {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translate(-50%, 0);
         }
 
-        @keyframes floatUp {
-            0% {
-                transform: translateY(100vh) rotate(0deg);
-                opacity: 0;
-            }
-            10% {
-                opacity: 0.6;
-            }
-            90% {
-                opacity: 0.6;
-            }
-            100% {
-                transform: translateY(-100px) rotate(360deg);
-                opacity: 0;
-            }
+        .ghost-btn {
+            font-family: inherit;
+            font-size: 13px;
+            letter-spacing: 0.1em;
+            color: var(--ink);
+            background: transparent;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            padding: 6px 14px;
+            cursor: pointer;
+        }
+        .ghost-btn:hover { background: rgba(255, 255, 255, 0.06); }
+
+        /* 寫心願 */
+        #wishForm {
+            position: fixed;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            padding: 16px;
+            background: rgba(3, 6, 14, 0.35);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.35s;
+        }
+        body.writing #wishForm {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        #wishForm form {
+            width: min(380px, 100%);
+            padding: 26px 24px 20px;
+            border-radius: 18px;
+            background: var(--glass-strong);
+            border: 1px solid var(--line);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        #wishForm h2 {
+            margin: 0 0 6px;
+            font-size: 19px;
+            font-weight: 600;
+            letter-spacing: 0.2em;
+        }
+        #wishForm p {
+            margin: 0 0 16px;
+            font-size: 13px;
+            color: var(--ink-dim);
+            letter-spacing: 0.06em;
+        }
+        #wishInput {
+            width: 100%;
+            font-family: inherit;
+            font-size: 16px;
+            color: var(--ink);
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 12px 14px;
+            outline: none;
+        }
+        #wishInput:focus { border-color: rgba(255, 190, 120, 0.6); }
+        #wishForm .row {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 18px;
+        }
+        #wishForm .primary {
+            font-family: inherit;
+            font-size: 14px;
+            letter-spacing: 0.12em;
+            color: #2b1606;
+            background: linear-gradient(180deg, #ffd79a, var(--amber));
+            border: none;
+            border-radius: 999px;
+            padding: 8px 18px;
+            cursor: pointer;
+        }
+
+        /* 心願卡片 */
+        #wishCard {
+            position: fixed;
+            left: 0;
+            top: 0;
+            max-width: 240px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            background: var(--glass-strong);
+            border: 1px solid var(--line);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.25s;
+            will-change: transform;
+        }
+        #wishCard.show { opacity: 1; }
+        #wishCard .no {
+            font-size: 11px;
+            letter-spacing: 0.2em;
+            color: var(--amber);
+            margin-bottom: 4px;
+        }
+        #wishCard .msg {
+            font-size: 15px;
+            line-height: 1.6;
+            letter-spacing: 0.05em;
+            word-break: break-word;
+        }
+
+        /* 提示訊息 */
+        #toast {
+            position: fixed;
+            top: 22%;
+            left: 50%;
+            transform: translate(-50%, 8px);
+            padding: 10px 22px;
+            border-radius: 999px;
+            background: var(--glass);
+            border: 1px solid var(--line);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            font-size: 14px;
+            letter-spacing: 0.15em;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.6s, transform 0.6s;
+            white-space: nowrap;
+        }
+        #toast.show {
+            opacity: 1;
+            transform: translate(-50%, 0);
+        }
+
+        /* 載入畫面 */
+        #loader {
+            position: fixed;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            background: #050913;
+            transition: opacity 1.4s ease;
+            z-index: 10;
+        }
+        #loader.done {
+            opacity: 0;
+            pointer-events: none;
+        }
+        #loader .flame {
+            width: 14px;
+            height: 22px;
+            margin: 0 auto 18px;
+            border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+            background: radial-gradient(circle at 50% 70%, #fff3c4, #ffb766 45%, rgba(232, 138, 58, 0) 72%);
+            box-shadow: 0 0 30px 10px rgba(255, 170, 80, 0.35);
+            animation: flicker 1.6s ease-in-out infinite;
+        }
+        #loader span {
+            font-size: 14px;
+            letter-spacing: 0.4em;
+            color: var(--ink-dim);
+        }
+        @keyframes flicker {
+            0%, 100% { transform: scale(1, 1); opacity: 1; }
+            40% { transform: scale(0.92, 1.06); opacity: 0.85; }
+            70% { transform: scale(1.04, 0.96); opacity: 0.95; }
+        }
+
+        @media (max-width: 600px) {
+            #title h1 { font-size: 22px; }
+            #title { left: 16px; }
         }
     </style>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
 </head>
 <body>
-    <div class="container">
-        <h1 class="title">🏮 水燈祈願</h1>
-        <p class="subtitle">在寧靜的湖面上放下心願，讓溫暖的燈光帶走你的祈福</p>
-        
-        <div class="version-container">
-            <!-- 2D 經典版本 -->
-            <div class="version-card v2d" onclick="selectVersion('2d')">
-                <div class="version-icon">🎨</div>
-                <h3 class="version-title">經典 2D 版本</h3>
-                <p class="version-description">溫馨的手繪風格，專注於許願的純粹體驗</p>
-                <ul class="version-features">
-                    <li>經典 Canvas 2D 繪圖</li>
-                    <li>輕量快速，相容性佳</li>
-                    <li>溫馨手繪風格</li>
-                    <li>專注許願體驗</li>
-                    <li>支援觸控操作</li>
-                </ul>
-                <button class="start-btn">開始 2D 體驗</button>
-            </div>
-            
-            <!-- 3D 現代版本 -->
-            <div class="version-card v3d" onclick="selectVersion('3d')">
-                <div class="version-icon">🌊</div>
-                <h3 class="version-title">現代 3D 版本</h3>
-                <p class="version-description">沉浸式 3D 體驗，真實的水燈與富士山美景</p>
-                <ul class="version-features">
-                    <li>Babylon.js 3D 引擎</li>
-                    <li>真實水燈與燭光效果</li>
-                    <li>富士山背景美景</li>
-                    <li>昼夜循環系統</li>
-                    <li>自由視角控制</li>
-                </ul>
-                <button class="start-btn">開始 3D 體驗</button>
-            </div>
-        </div>
-        
-        <p class="info-text">
-            💡 <strong>建議：</strong>初次體驗建議選擇 3D 版本，享受完整的視覺盛宴<br>
-            如果設備性能較低或偏好簡約風格，可選擇 2D 經典版本
-        </p>
+    <canvas id="scene"></canvas>
+
+    <header id="title">
+        <h1>放水燈</h1>
+        <p>把心願交給水流</p>
+    </header>
+
+    <div id="dock">
+        <button id="releaseBtn" type="button">放一盞水燈</button>
+        <div id="count"></div>
     </div>
 
-    <script>
-        // 選擇版本
-        function selectVersion(version) {
-            if (version === '2d') {
-                window.location.href = 'index-2d.html';
-            } else if (version === '3d') {
-                window.location.href = 'index-3d.html';
-            }
-        }
+    <div id="placeHint">
+        <span>輕點水面，放下水燈</span>
+        <button class="ghost-btn" id="cancelPlaceBtn" type="button">取消</button>
+    </div>
 
-        // 創建浮動水燈效果
-        function createFloatingLantern() {
-            const lantern = document.createElement('div');
-            lantern.className = 'floating-lantern';
-            lantern.style.left = Math.random() * window.innerWidth + 'px';
-            lantern.style.animationDelay = Math.random() * 2 + 's';
-            lantern.style.animationDuration = (12 + Math.random() * 6) + 's';
-            
-            // 隨機顏色
-            const colors = ['#ffcc66', '#ff9966', '#66ccff', '#ff6699', '#99ff66'];
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            lantern.style.background = `radial-gradient(circle, ${color} 20%, transparent 70%)`;
-            
-            document.body.appendChild(lantern);
-            
-            // 動畫結束後移除
-            setTimeout(() => {
-                if (document.body.contains(lantern)) {
-                    document.body.removeChild(lantern);
-                }
-            }, 18000);
-        }
+    <div id="wishForm">
+        <form id="wishFormInner" autocomplete="off">
+            <h2>寫下心願</h2>
+            <p>水燈會帶著它，慢慢漂向遠方。</p>
+            <input id="wishInput" type="text" maxlength="100" placeholder="願⋯⋯" required>
+            <div class="row">
+                <button class="ghost-btn" id="cancelWishBtn" type="button">取消</button>
+                <button class="primary" type="submit">點亮水燈</button>
+            </div>
+        </form>
+    </div>
 
-        // 定期創建浮動水燈
-        setInterval(createFloatingLantern, 3000);
-        
-        // 初始創建幾個
-        for (let i = 0; i < 5; i++) {
-            setTimeout(createFloatingLantern, i * 600);
-        }
+    <div id="wishCard">
+        <div class="no"></div>
+        <div class="msg"></div>
+    </div>
 
-        // 鍵盤快捷鍵
-        document.addEventListener('keydown', (e) => {
-            if (e.key === '2') {
-                selectVersion('2d');
-            } else if (e.key === '3') {
-                selectVersion('3d');
-            }
-        });
-    </script>
+    <div id="toast"></div>
+
+    <div id="loader">
+        <div>
+            <div class="flame"></div>
+            <span>點燈中</span>
+        </div>
+    </div>
+
+    <script type="module" src="./main.js"></script>
 </body>
 </html>
