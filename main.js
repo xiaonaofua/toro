@@ -443,6 +443,8 @@ const RING_TEXTURE = radialTexture([
 ]);
 
 const LANTERN_HALF = 0.68;
+// 水燈整體縮放：寬約 0.39，跟身高 1.7 的人比起來約 30 公分的真實大小
+const LANTERN_SCALE = 0.25;
 
 function createWoodGeometry() {
     const parts = [];
@@ -601,6 +603,7 @@ class Lantern {
         paper.userData.lantern = this;
         this.pickables = [wood, paper];
         this.group.add(wood, paper);
+        this.group.scale.setScalar(LANTERN_SCALE);
 
         const glowColor = new THREE.Color('#ffb874').lerp(tint, 0.2);
         this.glow = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -611,7 +614,7 @@ class Lantern {
             transparent: true,
             fog: false
         }));
-        this.glow.scale.setScalar(3.4);
+        this.glow.scale.setScalar(1.1);
 
         this.pool = new THREE.Mesh(POOL_GEOMETRY, new THREE.MeshBasicMaterial({
             map: POOL_TEXTURE,
@@ -621,7 +624,7 @@ class Lantern {
             transparent: true,
             fog: false
         }));
-        this.pool.scale.setScalar(6.5);
+        this.pool.scale.setScalar(2.0);
 
         scene.add(this.group, this.glow, this.pool);
 
@@ -636,6 +639,8 @@ class Lantern {
         this.light = 1;          // 燭火亮度（新放的水燈會從 0 慢慢點亮）
         this.drop = 0;           // 放入水中的高度偏移
         this.dropTime = -1;
+        this.dropHeight = 1.6;
+        this.dropDuration = 1.6;
         this.nextRipple = rand(2, 9);
         this.retired = false;
         this.removed = false;
@@ -645,29 +650,44 @@ class Lantern {
         this._euler = new THREE.Euler();
     }
 
-    release() {
+    release(height = 1.6) {
         this.light = 0;
-        this.drop = 1.6;
+        this.dropHeight = height;
+        this.dropDuration = 0.8 + height * 0.5;
+        this.drop = height;
         this.dropTime = 0;
+        this.splashed = false;
     }
 
-    respawnNearShore(cameraZ) {
-        this.x = rand(-38, 38);
-        this.z = Math.max(cameraZ, 30) + rand(4, 12);
+    setVisible(visible) {
+        this.group.visible = visible;
+        this.glow.visible = visible;
+        this.pool.visible = visible;
+    }
+
+    // 由岸邊蹲下的人從手上放進水裡（x, y, z 是手上水燈的位置）
+    launchAt(x, y, z) {
+        this.waiting = false;
+        this.setVisible(true);
+        this.x = x;
+        this.z = z;
         this.vx = 0;
-        this.vz = -0.3;
+        this.vz = -0.25;
+        this.release(Math.max(0.1, y));
     }
 
     update(dt, t, ctx) {
+        if (this.waiting) return;
         // 漂流：速度慢慢追上水流（有慣性）
         const flow = flowAt(this.x, this.z, t);
         this.vx = damp(this.vx, flow.vx * this.speed + ctx.pushX, 0.6, dt);
         this.vz = damp(this.vz, flow.vz * this.speed + ctx.pushZ, 0.6, dt);
-        if (this.dropTime < 0 || this.dropTime > 1.5) {
+        if (this.dropTime < 0 || this.dropTime > this.dropDuration) {
             this.x += this.vx * dt;
             this.z += this.vz * dt;
         }
         this.x = clamp(this.x, -LAKE.halfWidth, LAKE.halfWidth);
+        ctx.shore.keepInWater(this);
 
         // 隨波浮沉與傾斜（彈簧阻尼，帶一點遲滯感）
         const wave = sampleWave(this.x, this.z, t);
@@ -680,25 +700,25 @@ class Lantern {
         let settle = 0;
         if (this.dropTime >= 0) {
             this.dropTime += dt;
-            const p = clamp(this.dropTime / 1.6, 0, 1);
+            const p = clamp(this.dropTime / this.dropDuration, 0, 1);
             const ease = 1 - Math.pow(1 - p, 3);
-            this.drop = 1.6 * (1 - ease);
+            this.drop = this.dropHeight * (1 - ease);
             if (p >= 1) {
-                const s = this.dropTime - 1.6;
-                settle = 0.12 * Math.exp(-s * 1.4) * Math.sin(s * 6);
+                const s = this.dropTime - this.dropDuration;
+                settle = 0.07 * Math.exp(-s * 1.4) * Math.sin(s * 6);
                 this.tiltX += 0.06 * Math.exp(-s * 1.2) * Math.sin(s * 4.3) * dt * 10;
                 if (!this.splashed) {
                     this.splashed = true;
-                    ctx.ripples.spawn(this.x, this.z, 0.55, 2.2);
-                    ctx.ripples.spawn(this.x, this.z, 0.35, 1.2, 0.5);
-                    ctx.ripples.spawn(this.x, this.z, 0.2, 0.8, 1.1);
+                    ctx.ripples.spawn(this.x, this.z, 0.55, 0.9);
+                    ctx.ripples.spawn(this.x, this.z, 0.35, 0.55, 0.5);
+                    ctx.ripples.spawn(this.x, this.z, 0.2, 0.35, 1.1);
                 }
                 if (s > 6) this.dropTime = -1;
             }
             this.light = damp(this.light, 1, 1.4, dt);
         }
 
-        const y = wave.h * 0.85 - 0.05 + this.drop + settle;
+        const y = (wave.h * 0.85 - 0.05) * LANTERN_SCALE + this.drop + settle;
         this.group.position.set(this.x, y, this.z);
         this._euler.set(this.tiltX, 0, this.tiltZ);
         this._qTilt.setFromEuler(this._euler);
@@ -713,9 +733,9 @@ class Lantern {
         const bright = this.light * f;
 
         this.paperMaterial.color.copy(this.paperTint).multiplyScalar(lerp(1.0, 1.15, ctx.night) * (0.35 + 0.65 * bright));
-        this.glow.position.set(this.x, y + 0.75, this.z);
+        this.glow.position.set(this.x, y + 0.2, this.z);
         this.glow.material.opacity = 0.9 * bright * glowBoost * distanceFade;
-        this.glow.scale.setScalar(3.2 + 0.25 * f);
+        this.glow.scale.setScalar(1.05 + 0.08 * f);
         this.pool.position.set(this.x, 0.03, this.z);
         this.pool.material.opacity = 0.32 * bright * glowBoost * distanceFade;
 
@@ -723,21 +743,21 @@ class Lantern {
         this.nextRipple -= dt;
         if (this.nextRipple <= 0) {
             this.nextRipple = rand(5, 11);
-            if (distance < 120) ctx.ripples.spawn(this.x, this.z, 0.12, 1.5);
+            if (distance < 120) ctx.ripples.spawn(this.x, this.z, 0.12, 0.6);
         }
 
-        // 漂到遠處：退役的水燈消失，其他水燈回到近岸重新出發
+        // 漂到遠處：退役的水燈消失，其他水燈回到岸邊，等人再放一次
         if (this.z < LAKE.far) {
             if (this.retired) {
                 this.dispose();
             } else {
-                this.respawnNearShore(ctx.cameraPos.z);
+                ctx.shore.enqueue(this);
             }
         }
     }
 
     worldAnchor(target) {
-        return target.set(this.x, this.group.position.y + 1.6, this.z);
+        return target.set(this.x, this.group.position.y + 0.6, this.z);
     }
 
     dispose() {
@@ -800,10 +820,768 @@ class Ripples {
                 continue;
             }
             item.mesh.visible = true;
-            item.mesh.scale.setScalar(1.6 + p * 6 * item.size);
+            item.mesh.scale.setScalar(0.5 + p * 6 * item.size);
             item.mesh.material.opacity = item.strength * brightness * Math.pow(1 - p, 2) * smoothstep(0, 0.08, p);
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// 岸邊：堤岸、木棧橋、石階、岸上的人（蹲在水邊把水燈放進湖裡）
+// ---------------------------------------------------------------------------
+
+const SHORE_Z = 22;     // 岸線大致位置（鏡頭站在岸上，往 -z 方向看湖）
+const LAND_Y = 0.9;     // 岸面高度
+const PIER = { x: -6, rootZ: SHORE_Z + 3, tipZ: SHORE_Z - 13, halfW: 1.2, deckY: 0.8 };
+
+function shoreEdge(x) {
+    const bend = Math.max(0, Math.abs(x) - 45) * 0.22;
+    return SHORE_Z + 1.0 * Math.sin(x * 0.06 + 0.8) + 0.5 * Math.sin(x * 0.17 + 2.0) - bend;
+}
+
+function landHeight(x, d) {
+    // d：離岸線的距離，越往後越高，形成緩坡
+    return LAND_Y + smoothstep(8, 60, d) * (3 + 2 * Math.sin(x * 0.03)) + 0.06 * Math.sin(x * 1.3 + d * 0.9);
+}
+
+const materialCache = new Map();
+function lambert(color, options = {}) {
+    const key = color + JSON.stringify(options);
+    if (!materialCache.has(key)) materialCache.set(key, new THREE.MeshLambertMaterial({ color, ...options }));
+    return materialCache.get(key);
+}
+
+function createGround() {
+    const xs = [];
+    for (let i = 0; i <= 160; i++) xs.push(-260 + (i / 160) * 520);
+    // 每一列：[離岸線距離, 固定高度(null 表示用地形)]
+    const rows = [[-2.6, -1.2], [-0.7, 0.2], [0, LAND_Y], [0.8, null], [2, null], [4, null], [7, null],
+        [11, null], [16, null], [24, null], [35, null], [50, null], [70, null], [100, null], [140, null]];
+    const positions = [];
+    const colors = [];
+    const indices = [];
+    const stone = new THREE.Color('#57524b');
+    const gravel = new THREE.Color('#6a604f');
+    const grass = new THREE.Color('#2c3a22');
+    const grass2 = new THREE.Color('#3f4528');
+    const c = new THREE.Color();
+    rows.forEach(([d, fixedY], r) => {
+        xs.forEach((x) => {
+            const z = shoreEdge(x) + d;
+            const y = fixedY ?? landHeight(x, d);
+            positions.push(x, y, z);
+            const n = 0.5 + 0.5 * Math.sin(x * 0.7 + r * 1.9) * Math.sin(x * 0.23 - r);
+            if (r < 2) c.copy(stone).multiplyScalar(0.8 + 0.4 * n);
+            else if (r === 2) c.copy(gravel);
+            else c.copy(grass).lerp(grass2, n).lerp(gravel, r === 3 ? 0.5 : 0);
+            colors.push(c.r, c.g, c.b);
+        });
+    });
+    const w = xs.length;
+    for (let r = 0; r < rows.length - 1; r++) {
+        for (let i = 0; i < w - 1; i++) {
+            const a = r * w + i, b = a + 1, cc = a + w, d = cc + 1;
+            indices.push(a, cc, b, b, cc, d);
+        }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    return new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ vertexColors: true }));
+}
+
+function createPier() {
+    const planks = [];
+    const frame = [];
+    const length = PIER.rootZ - PIER.tipZ;
+    for (let z = PIER.tipZ + 0.16; z < PIER.rootZ; z += 0.34) {
+        const g = new THREE.BoxGeometry(PIER.halfW * 2, 0.07, 0.3);
+        g.rotateY(rand(-0.015, 0.015));
+        g.translate(rand(-0.03, 0.03), PIER.deckY + rand(-0.012, 0.012), z);
+        planks.push(g);
+    }
+    for (const s of [-1, 1]) {
+        const beam = new THREE.BoxGeometry(0.14, 0.18, length);
+        beam.translate(s * (PIER.halfW - 0.2), PIER.deckY - 0.13, PIER.tipZ + length / 2);
+        frame.push(beam);
+        for (let z = PIER.tipZ + 0.2; z < SHORE_Z; z += 2.6) {
+            const post = new THREE.CylinderGeometry(0.09, 0.1, 2.6, 8);
+            post.translate(s * (PIER.halfW - 0.05), PIER.deckY - 1.25, z);
+            frame.push(post);
+        }
+    }
+    const group = new THREE.Group();
+    group.add(new THREE.Mesh(mergeGeometries(planks), lambert('#5d4632')));
+    group.add(new THREE.Mesh(mergeGeometries(frame), lambert('#2e2219')));
+    group.position.x = PIER.x;
+    return group;
+}
+
+function createRock(x, z, r, y = 0.1) {
+    const g = new THREE.IcosahedronGeometry(r, 0);
+    g.scale(rand(1, 1.5), rand(0.5, 0.8), rand(0.9, 1.3));
+    const mesh = new THREE.Mesh(g, lambert('#4e4a45', { flatShading: true }));
+    mesh.position.set(x, y, z);
+    mesh.rotation.y = rand(0, Math.PI);
+    return mesh;
+}
+
+function createPine(x, z) {
+    const parts = [];
+    const h = rand(5, 9);
+    const trunk = new THREE.CylinderGeometry(0.15, 0.25, h * 0.45, 6);
+    trunk.translate(0, h * 0.22, 0);
+    const trunkMesh = new THREE.Mesh(trunk, lambert('#2b211a'));
+    for (let i = 0; i < 3; i++) {
+        const cone = new THREE.ConeGeometry(h * (0.32 - i * 0.07), h * 0.42, 7);
+        cone.translate(0, h * (0.42 + i * 0.2), 0);
+        parts.push(cone);
+    }
+    const group = new THREE.Group();
+    group.add(trunkMesh, new THREE.Mesh(mergeGeometries(parts), lambert('#1c2a1f', { flatShading: true })));
+    group.position.set(x, landHeight(x, z - shoreEdge(x)) - 0.1, z);
+    group.rotation.y = rand(0, Math.PI);
+    return group;
+}
+
+// 工地常見的三腳架 LED 投光燈：很亮的冷白光，照向棧橋和水面
+function createWorkLight(x, y, z, aim) {
+    const group = new THREE.Group();
+    const metal = lambert('#2b2d30');
+    // 三腳架
+    for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI * 2;
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 1.25, 6), metal);
+        leg.position.set(Math.cos(a) * 0.28, 0.58, Math.sin(a) * 0.28);
+        leg.rotation.set(Math.sin(a) * -0.45, 0, Math.cos(a) * 0.45);
+        group.add(leg);
+    }
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 1.9, 8), metal);
+    mast.position.y = 1.95;
+    group.add(mast);
+
+    // 燈頭：黃色外殼、發光的燈面，朝目標方向低頭
+    const head = new THREE.Group();
+    head.position.y = 2.95;
+    const housing = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.38, 0.14), lambert('#d9a520'));
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(0.44, 0.3), new THREE.MeshBasicMaterial({ color: '#ffffff' }));
+    face.position.z = -0.075;
+    face.rotation.y = Math.PI;
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: GLOW_TEXTURE,
+        color: '#dfe8ff',
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        transparent: true,
+        fog: false
+    }));
+    glow.scale.setScalar(3.2);
+    glow.position.z = -0.2;
+    head.add(housing, face, glow);
+    group.add(head);
+
+    const light = new THREE.SpotLight('#eef2ff', 0, 42, 0.62, 0.55, 1.1);
+    light.position.set(0, 2.95, 0);
+    group.add(light, light.target);
+    group.position.set(x, y, z);
+
+    // 讓燈頭（發光面朝 -z）與光線都對準目標
+    const local = new THREE.Vector3(aim.x - x, aim.y - y, aim.z - z);
+    light.target.position.copy(local);
+    const yaw = Math.atan2(-local.x, -local.z);
+    const pitch = -Math.atan2(2.95 - local.y, Math.hypot(local.x, local.z));
+    head.rotation.set(pitch, yaw, 0, 'YXZ');
+
+    group.userData = { face, glow, light, seed: rand(0, 100) };
+    return group;
+}
+
+function updateWorkLight(lamp, night) {
+    const { face, glow, light } = lamp.userData;
+    face.material.color.setScalar(lerp(1.2, 3.2, night));
+    glow.material.opacity = lerp(0.25, 0.9, night);
+    light.intensity = lerp(1.5, 14, night);
+}
+
+// 煤油馬燈：放在棧橋或木箱上，暖黃色的火光
+function createHurricaneLamp(x, y, z) {
+    const group = new THREE.Group();
+    const iron = lambert('#5a1f1a');
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.07, 12), iron);
+    base.position.y = 0.035;
+    const globe = new THREE.Mesh(new THREE.SphereGeometry(0.075, 14, 10), new THREE.MeshBasicMaterial({ color: '#ffd28a' }));
+    globe.scale.y = 1.35;
+    globe.position.y = 0.17;
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.07, 12), iron);
+    cap.position.y = 0.3;
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.006, 6, 16, Math.PI), iron);
+    handle.position.y = 0.33;
+    for (const s of [-1, 1]) {
+        const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.24, 4), iron);
+        rod.position.set(s * 0.085, 0.17, 0);
+        group.add(rod);
+    }
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: GLOW_TEXTURE,
+        color: '#ffb05a',
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        transparent: true,
+        fog: false
+    }));
+    glow.scale.setScalar(1.3);
+    glow.position.y = 0.17;
+    const light = new THREE.PointLight('#ffad5c', 0, 6, 1.5);
+    light.position.y = 0.2;
+    group.add(base, globe, cap, handle, glow, light);
+    group.position.set(x, y, z);
+    group.userData = { globe, glow, light, seed: rand(0, 100) };
+    return group;
+}
+
+function updateHurricaneLamp(lamp, t, night) {
+    const { globe, glow, light, seed } = lamp.userData;
+    const f = 1 + 0.08 * flicker(t * 1.4, seed);
+    globe.material.color.set('#ffd28a').multiplyScalar(lerp(1.0, 1.8, night) * f);
+    glow.material.opacity = lerp(0.3, 0.85, night) * f;
+    light.intensity = lerp(0.2, 2.2, night) * f;
+}
+
+// 迷你水燈：人雙手托在掌上的那一盞
+function createHeldToro() {
+    const group = new THREE.Group();
+    const wood = new THREE.Mesh(WOOD_GEOMETRY, WOOD_MATERIAL);
+    const paper = new THREE.Mesh(PAPER_GEOMETRY, new THREE.MeshBasicMaterial({ color: '#ffe6b8', side: THREE.DoubleSide }));
+    group.add(wood, paper);
+    group.scale.setScalar(LANTERN_SCALE);
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: GLOW_TEXTURE,
+        color: '#ffb874',
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        transparent: true,
+        fog: false
+    }));
+    glow.scale.setScalar(0.8 / LANTERN_SCALE);
+    glow.position.y = 0.8;
+    group.add(glow);
+    group.userData = { paper, glow };
+    return group;
+}
+
+// 岸上的人：帶關節的低多邊形人偶（髖、大腿、小腿、軀幹、頭、手臂），可以站、走、蹲。面向 -z。
+// outfit：yukata 浴衣 / suit 西裝 / tshirt T 恤 / dress 洋裝
+// hairStyle：bun 盤髮 / short 短髮 / long 長髮 / curly 捲髮 / buzz 平頭
+function createPerson({
+    outfit = 'yukata', top, bottom = '#2d3446', accent = '#e8c35a',
+    hair = '#17110d', hairStyle = 'short', skin = '#e3bf9c', shorts = false, scale = 1, holding = false
+}) {
+    const root = new THREE.Group();
+    const add = (geometry, color, x, y, z, parent) => {
+        const mesh = new THREE.Mesh(geometry, lambert(color));
+        mesh.position.set(x, y, z);
+        parent.add(mesh);
+        return mesh;
+    };
+    const shoe = outfit === 'yukata' ? '#2a2018' : outfit === 'suit' ? '#141110' : '#e6e2da';
+
+    // 髖部：雙腿與上半身都掛在這裡
+    const hips = new THREE.Group();
+    hips.position.y = 0.95;
+    root.add(hips);
+
+    const thighColor = outfit === 'tshirt' || outfit === 'suit' ? bottom : skin;
+    const shinColor = outfit === 'suit' || (outfit === 'tshirt' && !shorts) ? bottom : skin;
+    const legs = [];
+    for (const side of [-1, 1]) {
+        const thigh = new THREE.Group();
+        thigh.position.set(side * 0.085, 0, 0);
+        hips.add(thigh);
+        add(new THREE.CylinderGeometry(0.078, 0.07, 0.47, 8), thighColor, 0, -0.235, 0, thigh);
+        const knee = new THREE.Group();
+        knee.position.y = -0.47;
+        thigh.add(knee);
+        add(new THREE.CylinderGeometry(0.066, 0.055, 0.44, 8), shinColor, 0, -0.22, 0, knee);
+        add(new THREE.BoxGeometry(0.1, 0.07, 0.22), shoe, 0, -0.45, -0.05, knee);
+        legs.push({ thigh, knee, side });
+    }
+
+    // 浴衣、洋裝的下襬（蹲下時會壓短、往前撐開）
+    let skirt = null;
+    if (outfit === 'yukata') {
+        skirt = add(new THREE.CylinderGeometry(0.19, 0.27, 0.9, 12), top, 0, -0.45, 0, hips);
+        skirt.userData = { top: 0, h: 0.9 };
+    } else if (outfit === 'dress') {
+        skirt = add(new THREE.CylinderGeometry(0.18, 0.3, 0.5, 14), bottom, 0, -0.2, 0, hips);
+        skirt.userData = { top: 0.05, h: 0.5 };
+    }
+
+    // 上半身
+    const torso = new THREE.Group();
+    torso.position.y = 0.05;
+    hips.add(torso);
+    if (outfit === 'yukata') {
+        add(new THREE.CylinderGeometry(0.205, 0.2, 0.16, 12), accent, 0, 0, 0, torso);
+        add(new THREE.CylinderGeometry(0.2, 0.2, 0.36, 12), top, 0, 0.25, 0, torso);
+    } else {
+        if (outfit !== 'dress') add(new THREE.CylinderGeometry(0.17, 0.17, 0.05, 12), outfit === 'suit' ? '#111111' : '#3a2c22', 0, -0.02, 0, torso);
+        add(new THREE.CylinderGeometry(0.2, 0.17, 0.44, 12), top, 0, 0.22, 0, torso);
+        if (outfit === 'suit') {
+            add(new THREE.BoxGeometry(0.1, 0.22, 0.02), '#f2f0ea', 0, 0.32, -0.19, torso);
+            add(new THREE.BoxGeometry(0.035, 0.2, 0.02), accent, 0, 0.3, -0.2, torso);
+        }
+    }
+
+    const head = new THREE.Group();
+    head.position.y = 0.65;
+    torso.add(head);
+    add(new THREE.SphereGeometry(0.125, 14, 10), skin, 0, 0, 0, head);
+    const cap = { buzz: 0.42, short: 0.55, bun: 0.55, long: 0.58, curly: 0.6 }[hairStyle] ?? 0.55;
+    add(new THREE.SphereGeometry(hairStyle === 'buzz' ? 0.128 : 0.134, 14, 10, 0, Math.PI * 2, 0, Math.PI * cap), hair, 0, 0.012, 0.012, head);
+    if (hairStyle === 'bun') add(new THREE.SphereGeometry(0.06, 10, 8), hair, 0, 0.1, 0.09, head);
+    if (hairStyle === 'long') add(new THREE.BoxGeometry(0.24, 0.32, 0.08), hair, 0, -0.1, 0.1, head);
+    if (hairStyle === 'curly') {
+        for (let i = 0; i < 7; i++) {
+            const a = (i / 7) * Math.PI * 2;
+            add(new THREE.SphereGeometry(0.06, 8, 6), hair, Math.cos(a) * 0.1, 0.07, Math.sin(a) * 0.1 + 0.02, head);
+        }
+    }
+
+    // 手臂：浴衣寬袖、西裝長袖、T 恤短袖露出前臂
+    const arms = [];
+    for (const side of [-1, 1]) {
+        const pivot = new THREE.Group();
+        pivot.position.set(side * 0.24, 0.45, 0);
+        pivot.rotation.z = side * 0.08;
+        if (outfit === 'yukata') {
+            add(new THREE.BoxGeometry(0.13, 0.42, 0.24), top, 0, -0.2, 0.02, pivot);
+        } else if (outfit === 'suit') {
+            add(new THREE.CylinderGeometry(0.06, 0.055, 0.42, 8), top, 0, -0.2, 0, pivot);
+        } else {
+            add(new THREE.CylinderGeometry(0.065, 0.062, 0.16, 8), top, 0, -0.07, 0, pivot);
+            add(new THREE.CylinderGeometry(0.045, 0.04, 0.3, 8), skin, 0, -0.29, 0, pivot);
+        }
+        add(new THREE.SphereGeometry(0.045, 8, 6), skin, 0, -0.45, -0.02, pivot);
+        torso.add(pivot);
+        arms.push(pivot);
+    }
+
+    let held = null;
+    if (holding) {
+        held = createHeldToro();
+        root.add(held);
+    }
+
+    root.scale.setScalar(scale);
+    return {
+        root, hips, torso, head, legs, arms, skirt, held, scale,
+        crouch: 0, crouchTarget: 0,     // 0 站著、1 蹲下
+        walk: 0, phase: 0,              // 走路的程度與步伐相位
+        releaseT: -1,                   // 放燈動作的計時
+        path: null, pathIndex: 0, speed: 1.0 * (0.7 + 0.3 * scale),
+        faceYaw: null, look: 0,
+        seed: rand(0, 100)
+    };
+}
+
+function dampAngle(a, b, lambda, dt) {
+    const diff = ((b - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+    return a + diff * (1 - Math.exp(-lambda * dt));
+}
+
+// 沿著路徑點走過去；回傳是否已經走到
+function stepAlongPath(p, dt) {
+    if (!p.path) {
+        p.walk = damp(p.walk, 0, 6, dt);
+        return true;
+    }
+    const pos = p.root.position;
+    const target = p.path[p.pathIndex];
+    const dx = target.x - pos.x;
+    const dz = target.z - pos.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.04) {
+        pos.y = target.y;
+        p.pathIndex += 1;
+        if (p.pathIndex >= p.path.length) p.path = null;
+        return !p.path;
+    }
+    const step = Math.min(dist, p.speed * p.walk * dt + 0.002);
+    pos.x += (dx / dist) * step;
+    pos.z += (dz / dist) * step;
+    pos.y += (target.y - pos.y) * (step / dist);
+    p.root.rotation.y = dampAngle(p.root.rotation.y, Math.atan2(-dx, -dz), 7, dt);
+    p.walk = damp(p.walk, 1, 5, dt);
+    p.phase += dt * p.speed * p.walk * Math.PI / (0.55 * p.scale);
+    return false;
+}
+
+function walkTo(p, points) {
+    p.path = points.map((v) => v.clone());
+    p.pathIndex = 0;
+    p.faceYaw = null;
+}
+
+// 依目前狀態擺姿勢：站 / 走 / 蹲 / 放燈
+function animatePerson(p, dt, t) {
+    p.crouch = damp(p.crouch, p.crouchTarget, 3.5, dt);
+    const c = smoothstep(0, 1, p.crouch);
+    const w = p.walk;
+    const idle = (1 - w) * (1 - c);
+
+    let reach = 0;
+    if (p.releaseT >= 0) {
+        p.releaseT += dt;
+        const r = p.releaseT;
+        reach = r < 0.9 ? smoothstep(0, 0.9, r) : 1 - smoothstep(1.3, 2.6, r);
+        if (r > 2.6) p.releaseT = -1;
+    }
+
+    p.hips.position.y = lerp(0.95, 0.4, c) - w * 0.025 * Math.abs(Math.cos(p.phase));
+    for (const { thigh, knee, side } of p.legs) {
+        const ph = p.phase + (side > 0 ? Math.PI : 0);
+        const walkThigh = 0.42 * Math.sin(ph) * w;
+        const walkKnee = (-0.75 * Math.max(0, Math.sin(ph - 1.2)) - 0.06) * w;
+        thigh.rotation.x = lerp(walkThigh, 1.35, c);
+        thigh.rotation.z = side * 0.06 * c;
+        knee.rotation.x = lerp(walkKnee, -2.35, c);
+    }
+    if (p.skirt) {
+        const k = lerp(1, 0.5, c);
+        p.skirt.scale.set(1 + 0.15 * c, k, 1 + 0.45 * c);
+        p.skirt.position.set(0, p.skirt.userData.top - (p.skirt.userData.h / 2) * k, -0.12 * c);
+    }
+
+    const sway = Math.sin(t * 0.7 + p.seed);
+    p.torso.rotation.x = lerp(-0.05 * w, -0.5, c) - 0.22 * reach + 0.012 * sway * idle;
+    p.root.rotation.z = 0.01 * sway * idle;
+    p.head.rotation.y = damp(p.head.rotation.y, p.look * idle, 1.5, dt);
+
+    const holdingToro = p.held && p.held.visible;
+    p.arms.forEach((arm, i) => {
+        const side = i === 0 ? -1 : 1;
+        let target;
+        if (holdingToro) {
+            // 雙手在胸前托著水燈；蹲下時往水面送出去
+            target = lerp(0.95, 1.4, c) + 0.45 * reach;
+            arm.rotation.z = side * lerp(0.08, -0.12, 1);
+        } else {
+            const swing = 0.38 * Math.sin(p.phase + (side > 0 ? 0 : Math.PI)) * w;
+            target = lerp(0.1 + swing, 1.4 + 0.45 * reach, c);
+            arm.rotation.z = side * 0.08;
+        }
+        arm.rotation.x = damp(arm.rotation.x, target, 10, dt);
+    });
+
+    if (p.held) {
+        // 托在掌心上：站著時在胸前，蹲下時貼近水面，放燈時再往前送
+        p.held.position.set(0, lerp(1.14, 0.52, c) - 0.14 * reach, lerp(-0.38, -0.58, c) - 0.12 * reach);
+    }
+
+    if (p.faceYaw !== null && !p.path) {
+        p.root.rotation.y = dampAngle(p.root.rotation.y, p.faceYaw, 4, dt);
+    }
+}
+
+function createShore(scene) {
+    const group = new THREE.Group();
+    group.add(createGround(), createPier());
+
+    // 石階（右邊）與水邊的平石
+    const stepX = 9;
+    const stepEdge = shoreEdge(stepX);
+    [[0.62, 0.35], [0.36, 1.1], [0.1, 1.85]].forEach(([y, back]) => {
+        const step = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.26, 0.85), lambert('#625c54'));
+        step.position.set(stepX, y, stepEdge - back);
+        group.add(step);
+    });
+    const slabX = 23;
+    const slabEdge = shoreEdge(slabX);
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.34, 1.5), lambert('#57524c', { flatShading: true }));
+    slab.position.set(slabX, 0.14, slabEdge - 1.2);
+    slab.rotation.y = 0.2;
+    group.add(slab);
+
+    // 水邊散落的石頭
+    for (let i = 0; i < 26; i++) {
+        const x = rand(-60, 60);
+        if (Math.abs(x - PIER.x) < 2.5 || Math.abs(x - stepX) < 2 || Math.abs(x - slabX) < 2) continue;
+        group.add(createRock(x, shoreEdge(x) - rand(0.4, 1.6), rand(0.25, 0.7), rand(-0.05, 0.2)));
+    }
+
+    // 松樹
+    for (let i = 0; i < 18; i++) {
+        const side = i % 2 ? 1 : -1;
+        const x = side * rand(32, 85);
+        group.add(createPine(x, shoreEdge(x) + rand(5, 30)));
+    }
+
+    const deck = PIER.deckY + 0.035;
+    const landAt = (x, d) => new THREE.Vector3(x, landHeight(x, d), shoreEdge(x) + d);
+
+    // 照明：三腳架投光燈（照向棧橋與水面）與煤油馬燈
+    const workLights = [
+        createWorkLight(PIER.x + 1.7, LAND_Y, PIER.rootZ + 0.8, new THREE.Vector3(PIER.x, 0, PIER.tipZ - 4)),
+        createWorkLight(stepX + 2.6, LAND_Y, stepEdge + 1.8, new THREE.Vector3(stepX - 1, 0, stepEdge - 6)),
+        createWorkLight(-19, LAND_Y, shoreEdge(-19) + 2.4, new THREE.Vector3(-17, 0, shoreEdge(-17) - 8))
+    ];
+    const lamps = [
+        createHurricaneLamp(PIER.x + 1.0, deck, PIER.tipZ + 0.6),
+        createHurricaneLamp(PIER.x + 1.0, deck, PIER.tipZ + 6.5),
+        createHurricaneLamp(slabX + 0.7, 0.31, slabEdge - 1.0),
+        createHurricaneLamp(31, LAND_Y, shoreEdge(31) + 2.0)
+    ];
+    group.add(...workLights, ...lamps);
+
+    // 人
+    const people = [];
+    const place = (opts, at, yaw = 0) => {
+        const person = createPerson(opts);
+        person.root.position.copy(at);
+        person.root.rotation.y = yaw;
+        person.faceYaw = yaw;
+        group.add(person.root);
+        people.push(person);
+        return person;
+    };
+
+    // 放燈的人：在岸上捧起一盞水燈 → 走到水邊 → 蹲下放進水裡 → 站起來走回岸上
+    const releaserDefs = [
+        {   // 棧橋：金髮、藍 T 恤配牛仔褲
+            opts: { outfit: 'tshirt', top: '#2f6db5', bottom: '#33415c', hair: '#d9b56a', hairStyle: 'short', skin: '#f1d3bd' },
+            path: [landAt(PIER.x - 1.4, 1.6), new THREE.Vector3(PIER.x - 0.55, deck, PIER.rootZ - 1), new THREE.Vector3(PIER.x - 0.55, deck, PIER.tipZ + 0.4)]
+        },
+        {   // 石階：綠色浴衣、黑色盤髮
+            opts: { outfit: 'yukata', top: '#3f5a4a', accent: '#d9a7b0', hair: '#17110d', hairStyle: 'bun', skin: '#e3bf9c' },
+            path: [landAt(stepX - 0.6, 1.8), new THREE.Vector3(stepX, 0.75, stepEdge - 0.35), new THREE.Vector3(stepX, 0.49, stepEdge - 1.1), new THREE.Vector3(stepX, 0.23, stepEdge - 1.95)]
+        },
+        {   // 平石：紅 T 恤卡其褲、黑色捲髮
+            opts: { outfit: 'tshirt', top: '#c0392b', bottom: '#a08d6a', hair: '#1a1410', hairStyle: 'curly', skin: '#5a3a26' },
+            path: [landAt(slabX + 0.8, 2.0), new THREE.Vector3(slabX + 0.2, 0.6, slabEdge - 0.25), new THREE.Vector3(slabX, 0.31, slabEdge - 1.25)]
+        }
+    ];
+    const releasers = releaserDefs.map((def) => ({
+        person: place({ ...def.opts, holding: true }, def.path[0], Math.PI),
+        out: def.path,
+        back: [...def.path].reverse(),
+        state: 'idle',
+        timer: rand(1, 6),
+        count: 0,
+        pending: false
+    }));
+
+    // 棧橋上一家人：在棧橋上來回散步（小孩跟著大人）
+    const pierA = new THREE.Vector3(PIER.x + 0.45, deck, PIER.tipZ + 2.8);
+    const pierB = new THREE.Vector3(PIER.x + 0.45, deck, PIER.rootZ - 1.5);
+    const strollers = [];
+    const followers = [];
+    const parent = place({ outfit: 'suit', top: '#2b2f36', bottom: '#2b2f36', accent: '#9b2335', hair: '#a9a9a9', hairStyle: 'short', skin: '#c99a6e' }, pierA);
+    strollers.push({ person: parent, points: [pierB, pierA], i: 0, wait: rand(2, 6) });
+    followers.push({
+        person: place({ outfit: 'tshirt', top: '#f2c14e', bottom: '#3b5998', shorts: true, hair: '#2a1a12', hairStyle: 'curly', skin: '#8d5a3b', scale: 0.62 }, pierA.clone().add(new THREE.Vector3(0.42, 0, 0.2))),
+        leader: parent,
+        offset: new THREE.Vector3(0.42, 0, 0.2)
+    });
+
+    // 棧橋尖端：穿白浴衣、手托水燈，靜靜看著水面
+    place({ outfit: 'yukata', top: '#e6e0d4', accent: '#b8322c', hair: '#17110d', hairStyle: 'bun', skin: '#e3bf9c', holding: true },
+        new THREE.Vector3(PIER.x + 0.65, deck, PIER.tipZ + 1.2), -0.15);
+
+    // 岸上沿著水邊散步的人
+    const shoreWalker = place({ outfit: 'tshirt', top: '#2e8b57', bottom: '#2d3446', hair: '#17110d', hairStyle: 'long', skin: '#5a3a26' }, landAt(-16, 1.6));
+    strollers.push({ person: shoreWalker, points: [landAt(-26, 1.8), landAt(-11, 1.4), landAt(-16, 2.4)], i: 0, wait: rand(1, 4) });
+    const mother = place({ outfit: 'dress', top: '#5b4a6b', bottom: '#5b4a6b', hair: '#17110d', hairStyle: 'long', skin: '#c99a6e' }, landAt(29, 2.1));
+    strollers.push({ person: mother, points: [landAt(36, 2.4), landAt(27, 1.8)], i: 0, wait: rand(3, 8) });
+    followers.push({
+        person: place({ outfit: 'dress', top: '#9ec9e8', bottom: '#9ec9e8', hair: '#d9b56a', hairStyle: 'long', skin: '#f1d3bd', scale: 0.65 }, landAt(28.5, 2.0)),
+        leader: mother,
+        offset: new THREE.Vector3(-0.5, 0, 0.15)
+    });
+
+    // 站著看湖的人（手上托著水燈或空手）
+    place({ outfit: 'suit', top: '#1f2f4f', bottom: '#1f2f4f', accent: '#c8a26a', hair: '#6b4226', hairStyle: 'short', skin: '#f1d3bd', holding: true }, landAt(stepX + 1.6, 1.1), -0.3);
+    place({ outfit: 'yukata', top: '#d97a6a', accent: '#3a2a4a', hair: '#d9b56a', hairStyle: 'bun', skin: '#f1d3bd', holding: true }, landAt(-15.3, 1.7), 0.1);
+    place({ outfit: 'dress', top: '#7a1f3d', bottom: '#7a1f3d', hair: '#9c4a22', hairStyle: 'long', skin: '#f1d3bd' }, landAt(PIER.x - 2.8, 1.4), 0.25);
+    place({ outfit: 'tshirt', top: '#f4f1ea', bottom: '#56606e', shorts: true, hair: '#4a2e1c', hairStyle: 'buzz', skin: '#e0b48f' }, landAt(PIER.x + 3.2, 1.2), -0.2);
+
+    scene.add(group);
+
+    const queue = [];          // 漂遠後回到岸邊、等著被再放一次的水燈
+    const _hand = new THREE.Vector3();
+
+    function nextLantern() {
+        while (queue.length) {
+            const lantern = queue.shift();
+            if (lantern.removed) continue;
+            if (lantern.retired) {
+                lantern.dispose();
+                continue;
+            }
+            return lantern;
+        }
+        return null;
+    }
+
+    function updateReleaser(r, dt) {
+        const p = r.person;
+        const arrived = stepAlongPath(p, dt);
+        switch (r.state) {
+            case 'idle':
+                p.crouchTarget = 0;
+                p.held.visible = queue.length > 0;
+                r.timer -= dt;
+                if (r.timer <= 0) {
+                    walkTo(p, r.out);
+                    r.state = 'out';
+                }
+                break;
+            case 'out':
+                if (arrived) {
+                    p.faceYaw = 0;
+                    p.crouchTarget = 1;
+                    r.state = 'crouch';
+                    r.timer = 1.1;
+                    r.count = 0;
+                }
+                break;
+            case 'crouch':
+                r.timer -= dt;
+                if (r.timer <= 0) {
+                    r.state = 'release';
+                    r.timer = 0;
+                }
+                break;
+            case 'release': {
+                r.timer -= dt;
+                const limit = queue.length > 6 ? 8 : 4;
+                if (r.pending && p.releaseT > 0.85) {
+                    // 手伸到最低點時，水燈離手落水
+                    const lantern = nextLantern();
+                    if (lantern) {
+                        p.held.getWorldPosition(_hand);
+                        lantern.launchAt(_hand.x, _hand.y, _hand.z - 0.15);
+                    }
+                    p.held.visible = false;
+                    r.pending = false;
+                }
+                if (r.timer <= 0 && !r.pending) {
+                    if (queue.length > 0 && r.count < limit) {
+                        // 從身旁再拿起一盞，接著放
+                        p.held.visible = true;
+                        p.releaseT = 0;
+                        r.pending = true;
+                        r.count += 1;
+                        r.timer = 3.2;
+                    } else if (r.count === 0 && !r.touched) {
+                        // 沒有水燈可放時，伸手碰碰水面
+                        p.releaseT = 0;
+                        r.touched = true;
+                        r.timer = 2.8;
+                    } else {
+                        r.state = 'rise';
+                        p.crouchTarget = 0;
+                        r.timer = 1.1;
+                    }
+                }
+                break;
+            }
+            case 'rise':
+                r.timer -= dt;
+                if (r.timer <= 0) {
+                    walkTo(p, r.back);
+                    r.state = 'back';
+                }
+                break;
+            case 'back':
+                if (arrived) {
+                    p.faceYaw = 0;
+                    r.state = 'idle';
+                    r.timer = rand(5, 12);
+                    r.touched = false;
+                }
+                break;
+        }
+    }
+
+    const _follow = new THREE.Vector3();
+
+    return {
+        edge: shoreEdge,
+
+        // 地面高度（給鏡頭用，避免鑽進岸裡）
+        groundAt(x, z) {
+            const d = z - shoreEdge(x);
+            if (d >= -0.7) return d >= 0 ? landHeight(x, d) : LAND_Y * 0.5;
+            if (Math.abs(x - PIER.x) < PIER.halfW && z > PIER.tipZ) return PIER.deckY;
+            return 0;
+        },
+
+        isWater(x, z) {
+            if (z > shoreEdge(x) - 0.9) return false;
+            if (Math.abs(x - PIER.x) < PIER.halfW + 0.3 && z > PIER.tipZ - 0.3) return false;
+            return true;
+        },
+
+        // 水燈不會漂上岸或穿過棧橋
+        keepInWater(lantern) {
+            const edge = shoreEdge(lantern.x) - 1.1;
+            if (lantern.z > edge) {
+                lantern.z = edge;
+                lantern.vz = Math.min(lantern.vz, 0);
+            }
+            const dx = lantern.x - PIER.x;
+            const clearance = PIER.halfW + 0.35;
+            if (lantern.z > PIER.tipZ + 0.1 && Math.abs(dx) < clearance) {
+                lantern.x = PIER.x + Math.sign(dx || 1) * clearance;
+            }
+        },
+
+        // 漂遠的水燈先藏起來，排隊等岸邊的人再放一次
+        enqueue(lantern) {
+            lantern.waiting = true;
+            lantern.setVisible(false);
+            queue.push(lantern);
+        },
+
+        update(dt, t, night) {
+            for (const r of releasers) updateReleaser(r, dt);
+            for (const s of strollers) {
+                if (stepAlongPath(s.person, dt)) {
+                    s.wait -= dt;
+                    if (s.wait <= 0) {
+                        walkTo(s.person, [s.points[s.i]]);
+                        s.i = (s.i + 1) % s.points.length;
+                        s.wait = rand(4, 10);
+                    }
+                }
+            }
+            for (const f of followers) {
+                // 跟在大人身旁：大人走就跟著走，停下來就一起看湖
+                _follow.copy(f.offset).applyAxisAngle(THREE.Object3D.DEFAULT_UP, f.leader.root.rotation.y).add(f.leader.root.position);
+                const gap = Math.hypot(_follow.x - f.person.root.position.x, _follow.z - f.person.root.position.z);
+                if (gap > 0.25) {
+                    f.person.path = [_follow.clone()];
+                    f.person.pathIndex = 0;
+                    f.person.speed = f.leader.speed * 1.15;
+                }
+                stepAlongPath(f.person, dt);
+                if (!f.person.path) f.person.faceYaw = f.leader.root.rotation.y;
+            }
+            for (const person of people) {
+                person.look = 0.35 * Math.sin(t * 0.13 + person.seed);
+                animatePerson(person, dt, t);
+                const held = person.held;
+                if (held) {
+                    held.userData.paper.material.color.set('#ffe6b8').multiplyScalar(lerp(0.75, 0.8, night) * (1 + 0.08 * flicker(t, person.seed)));
+                    held.userData.glow.material.opacity = lerp(0.25, 0.45, night);
+                }
+            }
+            for (const lamp of workLights) updateWorkLight(lamp, night);
+            for (const lamp of lamps) updateHurricaneLamp(lamp, t, night);
+        }
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -946,7 +1724,9 @@ try {
     fail('你的瀏覽器無法使用 WebGL，<br>請換用新版 Chrome / Safari / Edge 再試一次。');
     throw error;
 }
-renderer.setPixelRatio(Math.min(devicePixelRatio, IS_MOBILE ? 1.5 : 2));
+const MAX_PIXEL_RATIO = Math.min(devicePixelRatio, IS_MOBILE ? 1.5 : 2);
+let pixelRatio = MAX_PIXEL_RATIO;
+renderer.setPixelRatio(pixelRatio);
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
@@ -955,7 +1735,7 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x000000, 160, 950);
 
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.5, 9000);
-camera.position.set(0, 7.5, 42);
+camera.position.set(3, 4.6, 35);
 
 // 直式螢幕（手機）時加大視角，讓水平方向至少看得到約 50°，富士山不被裁掉
 function fitCamera() {
@@ -968,22 +1748,31 @@ function fitCamera() {
 fitCamera();
 
 const controls = new OrbitControls(camera, ui.canvas);
-const baseTarget = new THREE.Vector3(0, 3, -10);
-controls.target.copy(baseTarget);
+// 初始畫面：站在岸上、看向棧橋與湖面（重置時回到這裡）
+const HOME_CAMERA = camera.position.clone();
+const HOME_TARGET = new THREE.Vector3(-2, 1.8, -4);
+controls.target.copy(HOME_TARGET);
+// 網址可指定視角：?cam=相機x,y,z,目標x,y,z（方便分享某個畫面）
+{
+    const cam = new URLSearchParams(location.search).get('cam')?.split(',').map(Number);
+    if (cam?.length === 6 && cam.every(Number.isFinite)) {
+        camera.position.set(cam[0], cam[1], cam[2]);
+        controls.target.set(cam[3], cam[4], cam[5]);
+    }
+}
 controls.enableDamping = true;
-controls.dampingFactor = 0.06;
+controls.dampingFactor = 0.08;
 // 左鍵拖曳旋轉、右鍵拖曳平移（沿著水面）、滾輪縮放
 controls.enablePan = true;
 controls.screenSpacePanning = false;
-controls.panSpeed = 0.8;
-controls.rotateSpeed = 0.5;
-controls.zoomSpeed = 0.8;
-controls.minDistance = 8;
-controls.maxDistance = 110;
-controls.minPolarAngle = THREE.MathUtils.degToRad(40);
-controls.maxPolarAngle = THREE.MathUtils.degToRad(88);
-controls.minAzimuthAngle = THREE.MathUtils.degToRad(-75);
-controls.maxAzimuthAngle = THREE.MathUtils.degToRad(75);
+controls.panSpeed = 1.0;
+controls.rotateSpeed = 0.55;
+controls.zoomSpeed = 1.1;
+controls.zoomToCursor = true;   // 滾輪往游標指的地方拉近
+controls.minDistance = 2.5;
+controls.maxDistance = 320;
+controls.minPolarAngle = THREE.MathUtils.degToRad(5);
+controls.maxPolarAngle = THREE.MathUtils.degToRad(89);
 controls.update();
 
 // 光照
@@ -1003,24 +1792,27 @@ scene.add(fuji, ridgeFar, ridgeNear);
 
 // 水面
 const water = new Water(new THREE.PlaneGeometry(8000, 8000), {
-    textureWidth: IS_MOBILE ? 512 : 1024,
-    textureHeight: IS_MOBILE ? 512 : 1024,
+    textureWidth: IS_MOBILE ? 1024 : 2048,
+    textureHeight: IS_MOBILE ? 1024 : 2048,
     waterNormals: createWaterNormals(256),
     sunDirection: new THREE.Vector3(0, 1, 0),
     sunColor: 0xffffff,
     waterColor: 0x0e1b30,
-    distortionScale: 1.6,
+    distortionScale: 0.55,
     fog: true
 });
 // 原版 Water shader 會加一個固定的 0.1 灰，夜裡湖面會發白；改成跟水色走。湖面也調得比海面平靜一些。
 water.material.fragmentShader = water.material.fragmentShader
     .replace('vec3( 0.1 ) + reflectionSample', 'waterColor * 0.35 + reflectionSample')
-    .replace('vec3( 1.5, 1.0, 1.5 )', 'vec3( 0.9, 1.0, 0.9 )');
+    .replace('vec3( 1.5, 1.0, 1.5 )', 'vec3( 0.9, 1.0, 0.9 )')
+    // 原本扭曲量隨距離倒數放大，近處倒影會被扯歪；加上上限讓倒影對準實物
+    .replace('( 0.001 + 1.0 / distance )', 'min( 0.001 + 1.0 / distance, 0.012 )');
 water.material.uniforms.size.value = 1.6;
 water.rotation.x = -Math.PI / 2;
 scene.add(water);
 
 const ripples = new Ripples(scene, 48);
+const shore = createShore(scene);
 
 // 後製：bloom 讓燭光與日月自然地暈開
 const composer = new EffectComposer(renderer);
@@ -1075,9 +1867,9 @@ function spawnLantern(data, { x, z, release = false } = {}) {
         id: data.id,
         message: data.message,
         x: x ?? rand(-45, 45),
-        z: z ?? rand(LAKE.far + 20, 14)
+        z: z ?? rand(LAKE.far + 20, SHORE_Z - 5)
     });
-    if (release) lantern.release();
+    if (release) lantern.release(1.0);
     lanterns.push(lantern);
 
     // 超過上限：讓最遠的老水燈漂走後就不再回來
@@ -1094,7 +1886,10 @@ async function loadWishes() {
     if (wishes.length === 0) {
         wishes = DEMO_WISHES.map((message, i) => ({ id: i + 1, message }));
     }
-    wishes.forEach((w) => spawnLantern(w));
+    const spawned = wishes.map((w) => spawnLantern(w));
+    // 留幾盞在岸邊，讓岸上的人一開始就有水燈可以放
+    const keep = Math.min(5, Math.floor(spawned.length / 4));
+    spawned.sort(() => Math.random() - 0.5).slice(0, keep).forEach((l) => shore.enqueue(l));
     updateCount();
 }
 
@@ -1122,7 +1917,7 @@ function pickLantern(clientX, clientY) {
     pointerNdc.set((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
     raycaster.setFromCamera(pointerNdc, camera);
     const targets = [];
-    for (const l of lanterns) if (!l.removed) targets.push(...l.pickables);
+    for (const l of lanterns) if (!l.removed && !l.waiting) targets.push(...l.pickables);
     const hit = raycaster.intersectObjects(targets, false)[0];
     return hit ? hit.object.userData.lantern : null;
 }
@@ -1145,6 +1940,10 @@ async function placeAt(clientX, clientY) {
     if (!raycaster.ray.intersectPlane(waterPlane, point)) return;
     if (point.z < LAKE.far + 30 || Math.abs(point.x) > LAKE.halfWidth) {
         showToast('再近一點的水面吧');
+        return;
+    }
+    if (!shore.isWater(point.x, point.z)) {
+        showToast('請點在湖面上');
         return;
     }
     const message = pendingWish;
@@ -1226,20 +2025,25 @@ const MOVE_KEYS = {
 const held = new Set();      // 目前按住的方向（鍵盤與按鈕共用）
 let boost = false;
 const moveVelocity = new THREE.Vector3();
-const sway = new THREE.Vector3();
-const lastSway = new THREE.Vector3();
-let flyTarget = null;
 
-// 可移動範圍：留在湖面上方，不會鑽到水下或飛出湖外
+// 平滑飛行（雙擊某處、重置）：鏡頭與注視點一起緩緩移到目的地
+const fly = {
+    active: false, t: 0, duration: 1,
+    fromTarget: new THREE.Vector3(), fromCamera: new THREE.Vector3(),
+    target: new THREE.Vector3(), camera: new THREE.Vector3()
+};
+
+// 可移動範圍：涵蓋整個湖、岸邊與遠山前方（放寬，只防止飛到場景外）
 const TARGET_BOUNDS = new THREE.Box3(
-    new THREE.Vector3(-LAKE.halfWidth, 0.8, LAKE.far + 15),
-    new THREE.Vector3(LAKE.halfWidth, 25, 40)
+    new THREE.Vector3(-420, 0, -720),
+    new THREE.Vector3(420, 140, 140)
 );
 
 const _forward = new THREE.Vector3();
 const _right = new THREE.Vector3();
 const _wish = new THREE.Vector3();
 const _shift = new THREE.Vector3();
+const _offset = new THREE.Vector3();
 
 function isTyping(e) {
     return e.target instanceof HTMLElement && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');
@@ -1248,6 +2052,42 @@ function isTyping(e) {
 function shiftView(delta) {
     camera.position.add(delta);
     controls.target.add(delta);
+}
+
+function flyTo(target, cameraPosition) {
+    fly.fromTarget.copy(controls.target);
+    fly.fromCamera.copy(camera.position);
+    fly.target.copy(target);
+    fly.camera.copy(cameraPosition);
+    // 固定時長、頭尾緩動：遠近都在 1～2.5 秒內平順抵達
+    const travel = Math.max(fly.fromCamera.distanceTo(fly.camera), fly.fromTarget.distanceTo(fly.target));
+    fly.duration = clamp(0.9 + travel / 200, 1, 2.5);
+    fly.t = 0;
+    fly.active = true;
+    controls.enableDamping = false;   // 飛行時不要殘留之前拖曳的慣性
+    moveVelocity.set(0, 0, 0);
+}
+
+function cancelFly() {
+    fly.active = false;
+    controls.enableDamping = true;
+}
+
+function resetView() {
+    selectLantern(null);
+    flyTo(HOME_TARGET, HOME_CAMERA);
+}
+
+// 富士山的地表高度（避免鏡頭鑽進山裡）
+function fujiHeight(x, z) {
+    const r = Math.hypot(x - fuji.position.x, z - fuji.position.z) / 300;
+    const s = (r - 0.045) / 0.955;
+    if (s >= 1) return 0;
+    return 125 * Math.pow(1 - clamp(s, 0, 1), 1.75) + fuji.position.y;
+}
+
+function groundHeight(x, z) {
+    return Math.max(shore.groundAt(x, z), fujiHeight(x, z), 0);
 }
 
 function moveCamera(dt) {
@@ -1262,35 +2102,43 @@ function moveCamera(dt) {
     if (held.has('back')) _wish.sub(_forward);
     if (held.has('right')) _wish.add(_right);
     if (held.has('left')) _wish.sub(_right);
-    if (held.has('up')) _wish.y += 0.6;
-    if (held.has('down')) _wish.y -= 0.6;
+    if (held.has('up')) _wish.y += 0.7;
+    if (held.has('down')) _wish.y -= 0.7;
     if (_wish.lengthSq() > 0) {
-        _wish.normalize().multiplyScalar(boost ? 30 : 12);
-        flyTarget = null;
+        // 離注視點越遠移動越快，近看時精細、遠看時不會慢吞吞
+        const distance = camera.position.distanceTo(controls.target);
+        const speed = clamp(distance * 0.5, 5, 70) * (boost ? 2.5 : 1);
+        _wish.normalize().multiplyScalar(speed);
+        cancelFly();
     }
 
     // 平滑加減速，放開按鍵時會慢慢停下
-    const k = 1 - Math.exp(-dt * (_wish.lengthSq() > 0 ? 5 : 3.5));
+    const k = 1 - Math.exp(-dt * (_wish.lengthSq() > 0 ? 6 : 4));
     moveVelocity.lerp(_wish, k);
     if (moveVelocity.lengthSq() > 1e-4) {
         shiftView(_shift.copy(moveVelocity).multiplyScalar(dt));
     }
 
-    // 雙擊水面後，平滑地滑過去
-    if (flyTarget) {
-        _shift.subVectors(flyTarget, controls.target);
-        _shift.y = 0;
-        if (_shift.length() < 0.2) {
-            flyTarget = null;
-        } else {
-            shiftView(_shift.multiplyScalar(1 - Math.exp(-dt * 2.2)));
-        }
+    if (fly.active) {
+        fly.t += dt;
+        const p = clamp(fly.t / fly.duration, 0, 1);
+        const ease = p * p * p * (p * (p * 6 - 15) + 10);
+        controls.target.lerpVectors(fly.fromTarget, fly.target, ease);
+        camera.position.lerpVectors(fly.fromCamera, fly.camera, ease);
+        if (p >= 1) cancelFly();
     }
 
-    // 限制範圍
-    const clamped = _shift.copy(controls.target).clamp(TARGET_BOUNDS.min, TARGET_BOUNDS.max).sub(controls.target);
-    if (clamped.lengthSq() > 0) shiftView(clamped);
-    if (camera.position.y < 1.2) shiftView(_shift.set(0, 1.2 - camera.position.y, 0));
+    // 範圍限制用「柔性」拉回，不會突然卡住
+    const excess = _shift.copy(controls.target).clamp(TARGET_BOUNDS.min, TARGET_BOUNDS.max).sub(controls.target);
+    if (excess.lengthSq() > 0) {
+        shiftView(excess.multiplyScalar(Math.min(1, dt * 8)));
+        moveVelocity.multiplyScalar(0.9);
+    }
+    const minY = groundHeight(camera.position.x, camera.position.z) + 1.2;
+    if (camera.position.y < minY) {
+        camera.position.y = lerp(camera.position.y, minY, Math.min(1, dt * 12));
+        if (camera.position.y < minY - 0.5) camera.position.y = minY - 0.5;
+    }
 }
 
 addEventListener('keydown', (e) => {
@@ -1301,6 +2149,11 @@ addEventListener('keydown', (e) => {
     }
     if (isTyping(e) || mode === 'writing' || e.metaKey || e.ctrlKey || e.altKey) return;
     boost = e.shiftKey;
+    if (e.code === 'KeyR' || e.code === 'Home') {
+        resetView();
+        e.preventDefault();
+        return;
+    }
     const dir = MOVE_KEYS[e.code];
     if (dir) {
         held.add(dir);
@@ -1316,6 +2169,10 @@ addEventListener('keyup', (e) => {
 
 // 視窗失焦時放開所有按鍵，避免鏡頭一直滑走
 addEventListener('blur', () => held.clear());
+
+// 使用者自己拖曳或滾輪時，取消進行中的飛行
+ui.canvas.addEventListener('pointerdown', cancelFly);
+ui.canvas.addEventListener('wheel', cancelFly, { passive: true });
 
 // 畫面上的方向鈕：按住持續移動
 document.querySelectorAll('#movePad [data-dir]').forEach((btn) => {
@@ -1335,14 +2192,23 @@ document.querySelectorAll('#movePad [data-dir]').forEach((btn) => {
     btn.addEventListener('lostpointercapture', release);
 });
 
+document.getElementById('resetBtn').addEventListener('click', resetView);
+
+// 雙擊畫面上任何看得到的地方（水面、岸、棧橋、山…），就飛過去
 ui.canvas.addEventListener('dblclick', (e) => {
     if (mode !== 'idle') return;
     pointerNdc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
     raycaster.setFromCamera(pointerNdc, camera);
-    const point = new THREE.Vector3();
-    if (raycaster.ray.intersectPlane(waterPlane, point)) {
-        flyTarget = point.clamp(TARGET_BOUNDS.min, TARGET_BOUNDS.max);
-    }
+    const hit = raycaster.intersectObjects(scene.children, true).find((h) =>
+        h.object !== sky && !h.object.isSprite && h.object.visible &&
+        h.object.material?.blending !== THREE.AdditiveBlending);
+    if (!hit) return;
+    const point = hit.point.clamp(TARGET_BOUNDS.min, TARGET_BOUNDS.max);
+    // 保持目前的觀看方向，距離拉近一些
+    _offset.subVectors(camera.position, controls.target);
+    const distance = clamp(Math.min(_offset.length(), hit.distance) * 0.6, 6, 80);
+    _offset.normalize().multiplyScalar(distance);
+    flyTo(point, point.clone().add(_offset));
 });
 
 // 右鍵用來平移，不要跳出瀏覽器選單
@@ -1386,7 +2252,7 @@ let firstFrame = true;
 
 function separate() {
     // 水燈彼此輕輕推開，不會疊在一起
-    const minDist = 2.4;
+    const minDist = 0.9;
     for (let i = 0; i < lanterns.length; i++) {
         const a = lanterns[i];
         a.pushX = 0;
@@ -1394,8 +2260,10 @@ function separate() {
     }
     for (let i = 0; i < lanterns.length; i++) {
         const a = lanterns[i];
+        if (a.waiting) continue;
         for (let j = i + 1; j < lanterns.length; j++) {
             const b = lanterns[j];
+            if (b.waiting) continue;
             const dx = a.x - b.x;
             const dz = a.z - b.z;
             if (Math.abs(dx) > minDist || Math.abs(dz) > minDist) continue;
@@ -1411,6 +2279,27 @@ function separate() {
     }
 }
 
+// 依實際幀率自動調整解析度：卡頓時降一點，順暢時再調回來
+let fpsTime = 0;
+let fpsFrames = 0;
+function adaptQuality(dt) {
+    fpsTime += dt;
+    fpsFrames += 1;
+    if (fpsTime < 1.5) return;
+    const fps = fpsFrames / fpsTime;
+    fpsTime = 0;
+    fpsFrames = 0;
+    let next = pixelRatio;
+    if (fps < 40) next = Math.max(0.6, pixelRatio - 0.2);
+    else if (fps > 57) next = Math.min(MAX_PIXEL_RATIO, pixelRatio + 0.1);
+    if (Math.abs(next - pixelRatio) > 0.01) {
+        pixelRatio = next;
+        renderer.setPixelRatio(pixelRatio);
+        composer.setPixelRatio(pixelRatio);
+        composer.setSize(innerWidth, innerHeight);
+    }
+}
+
 function frame() {
     const dt = Math.min(clock.getDelta(), 0.05);
     elapsed += dt;
@@ -1422,9 +2311,6 @@ function frame() {
     }
 
     // 鏡頭像呼吸一樣極輕微地晃動
-    sway.set(Math.sin(elapsed * 0.07) * 0.6, Math.sin(elapsed * 0.11) * 0.15, 0);
-    controls.target.add(sway).sub(lastSway);
-    lastSway.copy(sway);
     moveCamera(dt);
     controls.update();
 
@@ -1437,6 +2323,7 @@ function frame() {
         cameraPos: camera.position,
         night: skyState.night,
         ripples,
+        shore,
         pushX: 0,
         pushZ: 0
     };
@@ -1452,8 +2339,10 @@ function frame() {
         }
     }
     ripples.update(dt, lerp(0.5, 1, skyState.night));
+    shore.update(dt, elapsed, skyState.night);
 
     // 心願卡片跟著選中的水燈移動
+    if (selected?.waiting) selectLantern(null);
     if (selected) {
         selected.worldAnchor(anchor).project(camera);
         if (anchor.z > 1) {
@@ -1470,6 +2359,7 @@ function frame() {
     }
 
     composer.render();
+    adaptQuality(dt);
 
     if (firstFrame) {
         firstFrame = false;

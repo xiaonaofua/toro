@@ -386,6 +386,7 @@
         #movePad .down { grid-area: 3 / 2; }
         #movePad .rise { grid-area: 1 / 3; font-size: 12px; }
         #movePad .sink { grid-area: 3 / 3; font-size: 12px; }
+        #movePad .reset { grid-area: 2 / 2; font-size: 18px; color: var(--amber); }
         body.writing #movePad, body.writing #help { opacity: 0; pointer-events: none; }
 
         @media (max-width: 600px) {
@@ -426,7 +427,8 @@
             <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 或 方向鍵　前後左右</div>
             <div><kbd>E</kbd><kbd>Q</kbd>　上升 / 下降　<kbd>Shift</kbd> 加速</div>
             <div>左鍵拖曳 旋轉　右鍵拖曳 平移</div>
-            <div>滾輪 遠近　雙擊水面 飛過去</div>
+            <div>滾輪 往游標處拉近　雙擊任何地方 飛過去</div>
+            <div><kbd>R</kbd> 或 中間的 ⟲　回到初始畫面</div>
             <div>點水燈 看心願</div>
         </div>
         <button class="ghost-btn" id="helpToggle" type="button" aria-expanded="false" aria-controls="helpPanel" title="操作說明">?</button>
@@ -439,6 +441,7 @@
         <button class="down" data-dir="back" type="button" title="後退（S / ↓）">▼</button>
         <button class="rise" data-dir="up" type="button" title="上升（E）">升</button>
         <button class="sink" data-dir="down" type="button" title="下降（Q）">降</button>
+        <button class="reset" id="resetBtn" type="button" title="回到初始畫面（R）" aria-label="回到初始畫面">⟲</button>
     </div>
 
     <div id="placeHint">
