@@ -443,6 +443,8 @@ const RING_TEXTURE = radialTexture([
 ]);
 
 const LANTERN_HALF = 0.68;
+// 水燈整體縮放：和岸上的人比起來大約是一個小木盒的大小
+const LANTERN_SCALE = 0.55;
 
 function createWoodGeometry() {
     const parts = [];
@@ -601,6 +603,7 @@ class Lantern {
         paper.userData.lantern = this;
         this.pickables = [wood, paper];
         this.group.add(wood, paper);
+        this.group.scale.setScalar(LANTERN_SCALE);
 
         const glowColor = new THREE.Color('#ffb874').lerp(tint, 0.2);
         this.glow = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -611,7 +614,7 @@ class Lantern {
             transparent: true,
             fog: false
         }));
-        this.glow.scale.setScalar(3.4);
+        this.glow.scale.setScalar(2.1);
 
         this.pool = new THREE.Mesh(POOL_GEOMETRY, new THREE.MeshBasicMaterial({
             map: POOL_TEXTURE,
@@ -621,7 +624,7 @@ class Lantern {
             transparent: true,
             fog: false
         }));
-        this.pool.scale.setScalar(6.5);
+        this.pool.scale.setScalar(3.8);
 
         scene.add(this.group, this.glow, this.pool);
 
@@ -636,6 +639,8 @@ class Lantern {
         this.light = 1;          // 燭火亮度（新放的水燈會從 0 慢慢點亮）
         this.drop = 0;           // 放入水中的高度偏移
         this.dropTime = -1;
+        this.dropHeight = 1.6;
+        this.dropDuration = 1.6;
         this.nextRipple = rand(2, 9);
         this.retired = false;
         this.removed = false;
@@ -645,17 +650,23 @@ class Lantern {
         this._euler = new THREE.Euler();
     }
 
-    release() {
+    release(height = 1.6) {
         this.light = 0;
-        this.drop = 1.6;
+        this.dropHeight = height;
+        this.dropDuration = 0.8 + height * 0.5;
+        this.drop = height;
         this.dropTime = 0;
+        this.splashed = false;
     }
 
-    respawnNearShore(cameraZ) {
-        this.x = rand(-38, 38);
-        this.z = Math.max(cameraZ, 30) + rand(4, 12);
+    // 漂遠後，由岸邊蹲著的人重新放下水
+    respawnFromShore(shore) {
+        const spot = shore.takeReleaseSpot();
+        this.x = spot.x;
+        this.z = spot.z;
         this.vx = 0;
-        this.vz = -0.3;
+        this.vz = -0.25;
+        this.release(spot.height);
     }
 
     update(dt, t, ctx) {
@@ -663,11 +674,12 @@ class Lantern {
         const flow = flowAt(this.x, this.z, t);
         this.vx = damp(this.vx, flow.vx * this.speed + ctx.pushX, 0.6, dt);
         this.vz = damp(this.vz, flow.vz * this.speed + ctx.pushZ, 0.6, dt);
-        if (this.dropTime < 0 || this.dropTime > 1.5) {
+        if (this.dropTime < 0 || this.dropTime > this.dropDuration) {
             this.x += this.vx * dt;
             this.z += this.vz * dt;
         }
         this.x = clamp(this.x, -LAKE.halfWidth, LAKE.halfWidth);
+        ctx.shore.keepInWater(this);
 
         // 隨波浮沉與傾斜（彈簧阻尼，帶一點遲滯感）
         const wave = sampleWave(this.x, this.z, t);
@@ -680,25 +692,25 @@ class Lantern {
         let settle = 0;
         if (this.dropTime >= 0) {
             this.dropTime += dt;
-            const p = clamp(this.dropTime / 1.6, 0, 1);
+            const p = clamp(this.dropTime / this.dropDuration, 0, 1);
             const ease = 1 - Math.pow(1 - p, 3);
-            this.drop = 1.6 * (1 - ease);
+            this.drop = this.dropHeight * (1 - ease);
             if (p >= 1) {
-                const s = this.dropTime - 1.6;
-                settle = 0.12 * Math.exp(-s * 1.4) * Math.sin(s * 6);
+                const s = this.dropTime - this.dropDuration;
+                settle = 0.07 * Math.exp(-s * 1.4) * Math.sin(s * 6);
                 this.tiltX += 0.06 * Math.exp(-s * 1.2) * Math.sin(s * 4.3) * dt * 10;
                 if (!this.splashed) {
                     this.splashed = true;
-                    ctx.ripples.spawn(this.x, this.z, 0.55, 2.2);
-                    ctx.ripples.spawn(this.x, this.z, 0.35, 1.2, 0.5);
-                    ctx.ripples.spawn(this.x, this.z, 0.2, 0.8, 1.1);
+                    ctx.ripples.spawn(this.x, this.z, 0.55, 1.3);
+                    ctx.ripples.spawn(this.x, this.z, 0.35, 0.8, 0.5);
+                    ctx.ripples.spawn(this.x, this.z, 0.2, 0.5, 1.1);
                 }
                 if (s > 6) this.dropTime = -1;
             }
             this.light = damp(this.light, 1, 1.4, dt);
         }
 
-        const y = wave.h * 0.85 - 0.05 + this.drop + settle;
+        const y = (wave.h * 0.85 - 0.05) * LANTERN_SCALE + this.drop + settle;
         this.group.position.set(this.x, y, this.z);
         this._euler.set(this.tiltX, 0, this.tiltZ);
         this._qTilt.setFromEuler(this._euler);
@@ -713,9 +725,9 @@ class Lantern {
         const bright = this.light * f;
 
         this.paperMaterial.color.copy(this.paperTint).multiplyScalar(lerp(1.0, 1.15, ctx.night) * (0.35 + 0.65 * bright));
-        this.glow.position.set(this.x, y + 0.75, this.z);
+        this.glow.position.set(this.x, y + 0.42, this.z);
         this.glow.material.opacity = 0.9 * bright * glowBoost * distanceFade;
-        this.glow.scale.setScalar(3.2 + 0.25 * f);
+        this.glow.scale.setScalar(2.0 + 0.15 * f);
         this.pool.position.set(this.x, 0.03, this.z);
         this.pool.material.opacity = 0.32 * bright * glowBoost * distanceFade;
 
@@ -723,7 +735,7 @@ class Lantern {
         this.nextRipple -= dt;
         if (this.nextRipple <= 0) {
             this.nextRipple = rand(5, 11);
-            if (distance < 120) ctx.ripples.spawn(this.x, this.z, 0.12, 1.5);
+            if (distance < 120) ctx.ripples.spawn(this.x, this.z, 0.12, 0.9);
         }
 
         // 漂到遠處：退役的水燈消失，其他水燈回到近岸重新出發
@@ -731,13 +743,13 @@ class Lantern {
             if (this.retired) {
                 this.dispose();
             } else {
-                this.respawnNearShore(ctx.cameraPos.z);
+                this.respawnFromShore(ctx.shore);
             }
         }
     }
 
     worldAnchor(target) {
-        return target.set(this.x, this.group.position.y + 1.6, this.z);
+        return target.set(this.x, this.group.position.y + 1.0, this.z);
     }
 
     dispose() {
@@ -800,10 +812,431 @@ class Ripples {
                 continue;
             }
             item.mesh.visible = true;
-            item.mesh.scale.setScalar(1.6 + p * 6 * item.size);
+            item.mesh.scale.setScalar(0.9 + p * 6 * item.size);
             item.mesh.material.opacity = item.strength * brightness * Math.pow(1 - p, 2) * smoothstep(0, 0.08, p);
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// 岸邊：堤岸、木棧橋、石階、岸上的人（蹲在水邊把水燈放進湖裡）
+// ---------------------------------------------------------------------------
+
+const SHORE_Z = 22;     // 岸線大致位置（鏡頭站在岸上，往 -z 方向看湖）
+const LAND_Y = 0.9;     // 岸面高度
+const PIER = { x: -6, rootZ: SHORE_Z + 3, tipZ: SHORE_Z - 13, halfW: 1.2, deckY: 0.8 };
+
+function shoreEdge(x) {
+    const bend = Math.max(0, Math.abs(x) - 45) * 0.22;
+    return SHORE_Z + 1.0 * Math.sin(x * 0.06 + 0.8) + 0.5 * Math.sin(x * 0.17 + 2.0) - bend;
+}
+
+function landHeight(x, d) {
+    // d：離岸線的距離，越往後越高，形成緩坡
+    return LAND_Y + smoothstep(8, 60, d) * (3 + 2 * Math.sin(x * 0.03)) + 0.06 * Math.sin(x * 1.3 + d * 0.9);
+}
+
+const materialCache = new Map();
+function lambert(color, options = {}) {
+    const key = color + JSON.stringify(options);
+    if (!materialCache.has(key)) materialCache.set(key, new THREE.MeshLambertMaterial({ color, ...options }));
+    return materialCache.get(key);
+}
+
+function createGround() {
+    const xs = [];
+    for (let i = 0; i <= 160; i++) xs.push(-260 + (i / 160) * 520);
+    // 每一列：[離岸線距離, 固定高度(null 表示用地形)]
+    const rows = [[-2.6, -1.2], [-0.7, 0.2], [0, LAND_Y], [0.8, null], [2, null], [4, null], [7, null],
+        [11, null], [16, null], [24, null], [35, null], [50, null], [70, null], [100, null], [140, null]];
+    const positions = [];
+    const colors = [];
+    const indices = [];
+    const stone = new THREE.Color('#57524b');
+    const gravel = new THREE.Color('#6a604f');
+    const grass = new THREE.Color('#2c3a22');
+    const grass2 = new THREE.Color('#3f4528');
+    const c = new THREE.Color();
+    rows.forEach(([d, fixedY], r) => {
+        xs.forEach((x) => {
+            const z = shoreEdge(x) + d;
+            const y = fixedY ?? landHeight(x, d);
+            positions.push(x, y, z);
+            const n = 0.5 + 0.5 * Math.sin(x * 0.7 + r * 1.9) * Math.sin(x * 0.23 - r);
+            if (r < 2) c.copy(stone).multiplyScalar(0.8 + 0.4 * n);
+            else if (r === 2) c.copy(gravel);
+            else c.copy(grass).lerp(grass2, n).lerp(gravel, r === 3 ? 0.5 : 0);
+            colors.push(c.r, c.g, c.b);
+        });
+    });
+    const w = xs.length;
+    for (let r = 0; r < rows.length - 1; r++) {
+        for (let i = 0; i < w - 1; i++) {
+            const a = r * w + i, b = a + 1, cc = a + w, d = cc + 1;
+            indices.push(a, cc, b, b, cc, d);
+        }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    return new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ vertexColors: true }));
+}
+
+function createPier() {
+    const planks = [];
+    const frame = [];
+    const length = PIER.rootZ - PIER.tipZ;
+    for (let z = PIER.tipZ + 0.16; z < PIER.rootZ; z += 0.34) {
+        const g = new THREE.BoxGeometry(PIER.halfW * 2, 0.07, 0.3);
+        g.rotateY(rand(-0.015, 0.015));
+        g.translate(rand(-0.03, 0.03), PIER.deckY + rand(-0.012, 0.012), z);
+        planks.push(g);
+    }
+    for (const s of [-1, 1]) {
+        const beam = new THREE.BoxGeometry(0.14, 0.18, length);
+        beam.translate(s * (PIER.halfW - 0.2), PIER.deckY - 0.13, PIER.tipZ + length / 2);
+        frame.push(beam);
+        for (let z = PIER.tipZ + 0.2; z < SHORE_Z; z += 2.6) {
+            const post = new THREE.CylinderGeometry(0.09, 0.1, 2.6, 8);
+            post.translate(s * (PIER.halfW - 0.05), PIER.deckY - 1.25, z);
+            frame.push(post);
+        }
+    }
+    const group = new THREE.Group();
+    group.add(new THREE.Mesh(mergeGeometries(planks), lambert('#5d4632')));
+    group.add(new THREE.Mesh(mergeGeometries(frame), lambert('#2e2219')));
+    group.position.x = PIER.x;
+    return group;
+}
+
+function createRock(x, z, r, y = 0.1) {
+    const g = new THREE.IcosahedronGeometry(r, 0);
+    g.scale(rand(1, 1.5), rand(0.5, 0.8), rand(0.9, 1.3));
+    const mesh = new THREE.Mesh(g, lambert('#4e4a45', { flatShading: true }));
+    mesh.position.set(x, y, z);
+    mesh.rotation.y = rand(0, Math.PI);
+    return mesh;
+}
+
+function createPine(x, z) {
+    const parts = [];
+    const h = rand(5, 9);
+    const trunk = new THREE.CylinderGeometry(0.15, 0.25, h * 0.45, 6);
+    trunk.translate(0, h * 0.22, 0);
+    const trunkMesh = new THREE.Mesh(trunk, lambert('#2b211a'));
+    for (let i = 0; i < 3; i++) {
+        const cone = new THREE.ConeGeometry(h * (0.32 - i * 0.07), h * 0.42, 7);
+        cone.translate(0, h * (0.42 + i * 0.2), 0);
+        parts.push(cone);
+    }
+    const group = new THREE.Group();
+    group.add(trunkMesh, new THREE.Mesh(mergeGeometries(parts), lambert('#1c2a1f', { flatShading: true })));
+    group.position.set(x, landHeight(x, z - shoreEdge(x)) - 0.1, z);
+    group.rotation.y = rand(0, Math.PI);
+    return group;
+}
+
+// 提燈：紅色或白色的紙燈籠，發光並照亮附近
+function createChochin(size, color) {
+    const group = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.SphereGeometry(size, 14, 10), new THREE.MeshBasicMaterial({ color }));
+    body.scale.y = 1.25;
+    const capGeo = new THREE.CylinderGeometry(size * 0.55, size * 0.55, size * 0.18, 12);
+    const top = new THREE.Mesh(capGeo, lambert('#1b1512'));
+    top.position.y = size * 1.22;
+    const bottom = top.clone();
+    bottom.position.y = -size * 1.22;
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: GLOW_TEXTURE,
+        color: new THREE.Color(color).lerp(new THREE.Color('#ffb874'), 0.5),
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        transparent: true,
+        fog: false
+    }));
+    glow.scale.setScalar(size * 9);
+    group.add(body, top, bottom, glow);
+    group.userData = { body, glow, baseColor: new THREE.Color(color), seed: rand(0, 100) };
+    return group;
+}
+
+function updateChochin(lamp, t, night) {
+    const { body, glow, baseColor, seed } = lamp.userData;
+    const f = 1 + 0.06 * flicker(t * 0.8, seed);
+    body.material.color.copy(baseColor).multiplyScalar(lerp(0.75, 1.25, night) * f);
+    glow.material.opacity = lerp(0.25, 0.85, night) * f;
+}
+
+function createPolePost(x, z, color) {
+    const group = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 2.9, 6), lambert('#2a1f17'));
+    pole.position.y = 1.45;
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.6), lambert('#2a1f17'));
+    arm.position.set(0, 2.85, -0.28);
+    const lamp = createChochin(0.24, color);
+    lamp.position.set(0, 2.45, -0.55);
+    const light = new THREE.PointLight('#ffb070', 0, 16, 1.4);
+    light.position.set(0, 2.3, -0.6);
+    group.add(pole, arm, lamp, light);
+    group.position.set(x, 0, z);
+    group.userData = { lamp, light };
+    return group;
+}
+
+// 迷你水燈（蹲著的人手上捧著的那一盞）
+function createHeldToro() {
+    const group = new THREE.Group();
+    const wood = new THREE.Mesh(WOOD_GEOMETRY, WOOD_MATERIAL);
+    const paper = new THREE.Mesh(PAPER_GEOMETRY, new THREE.MeshBasicMaterial({ color: '#ffe6b8', side: THREE.DoubleSide }));
+    group.add(wood, paper);
+    group.scale.setScalar(LANTERN_SCALE);
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: GLOW_TEXTURE,
+        color: '#ffb874',
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        transparent: true,
+        fog: false
+    }));
+    glow.scale.setScalar(2.0 / LANTERN_SCALE);
+    glow.position.y = 0.8;
+    group.add(glow);
+    group.userData = { paper, glow };
+    return group;
+}
+
+// 穿浴衣的人（低多邊形、風格化）。面向 -z（看向湖）。
+function createPerson({ pose = 'stand', robe, obi, hair = '#17110d', skin = '#e3bf9c', scale = 1, holding = null }) {
+    const root = new THREE.Group();
+    const add = (geometry, color, x, y, z, parent = root) => {
+        const mesh = new THREE.Mesh(geometry, lambert(color));
+        mesh.position.set(x, y, z);
+        parent.add(mesh);
+        return mesh;
+    };
+    const addHead = (parent, y) => {
+        add(new THREE.SphereGeometry(0.125, 14, 10), skin, 0, y, 0, parent);
+        add(new THREE.SphereGeometry(0.133, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hair, 0, y + 0.012, 0.012, parent);
+        add(new THREE.SphereGeometry(0.06, 10, 8), hair, 0, y + 0.1, 0.09, parent);
+    };
+    const addArm = (parent, side, x, y, z, swing) => {
+        const pivot = new THREE.Group();
+        pivot.position.set(side * x, y, z);
+        pivot.rotation.set(swing, 0, side * 0.08);
+        add(new THREE.BoxGeometry(0.13, 0.42, 0.24), robe, 0, -0.2, 0.02, pivot);
+        add(new THREE.SphereGeometry(0.045, 8, 6), skin, 0, -0.45, -0.02, pivot);
+        parent.add(pivot);
+        return pivot;
+    };
+
+    const person = { root, pose, arms: [], upper: null, held: null, releaseT: -1, seed: rand(0, 100) };
+
+    if (pose === 'crouch') {
+        const skirt = add(new THREE.CylinderGeometry(0.26, 0.34, 0.42, 12), robe, 0, 0.21, 0.02);
+        skirt.scale.z = 1.25;
+        for (const s of [-1, 1]) add(new THREE.SphereGeometry(0.13, 10, 8), robe, s * 0.12, 0.42, -0.2);
+        const upper = new THREE.Group();
+        upper.position.set(0, 0.42, 0.02);
+        upper.rotation.x = -0.5;
+        add(new THREE.CylinderGeometry(0.2, 0.21, 0.14, 12), obi, 0, 0.07, 0, upper);
+        add(new THREE.CylinderGeometry(0.19, 0.2, 0.36, 12), robe, 0, 0.3, 0, upper);
+        addHead(upper, 0.62);
+        for (const s of [-1, 1]) person.arms.push(addArm(upper, s, 0.23, 0.45, 0, 1.4));
+        root.add(upper);
+        person.upper = upper;
+        if (holding === 'toro') {
+            person.held = createHeldToro();
+            person.held.position.set(0, 0.33, -0.62);
+            root.add(person.held);
+        }
+    } else {
+        for (const s of [-1, 1]) add(new THREE.BoxGeometry(0.09, 0.06, 0.2), '#2a2018', s * 0.09, 0.03, -0.03);
+        add(new THREE.CylinderGeometry(0.19, 0.27, 1.0, 12), robe, 0, 0.55, 0);
+        add(new THREE.CylinderGeometry(0.205, 0.2, 0.16, 12), obi, 0, 1.0, 0);
+        add(new THREE.CylinderGeometry(0.2, 0.2, 0.36, 12), robe, 0, 1.25, 0);
+        const upper = new THREE.Group();
+        addHead(upper, 1.6);
+        root.add(upper);
+        person.upper = upper;
+        person.arms.push(addArm(root, -1, 0.24, 1.4, 0, 0.12));
+        person.arms.push(addArm(root, 1, 0.24, 1.4, 0, holding === 'chochin' ? 0.55 : 0.12));
+        if (holding === 'chochin') {
+            const stick = add(new THREE.BoxGeometry(0.02, 0.02, 0.32), '#2a1f17', 0.24, 1.0, -0.36);
+            stick.rotation.x = 0.2;
+            person.held = createChochin(0.1, Math.random() < 0.5 ? '#ff7a4a' : '#fff0d0');
+            person.held.position.set(0.24, 0.83, -0.5);
+            root.add(person.held);
+        }
+    }
+    root.scale.setScalar(scale);
+    return person;
+}
+
+function updatePerson(person, dt, t) {
+    const sway = Math.sin(t * 0.7 + person.seed);
+    if (person.pose === 'crouch') {
+        // 放燈動作：身體再往前傾、雙手往水面送出去，然後慢慢收回
+        let reach = 0;
+        if (person.releaseT >= 0) {
+            person.releaseT += dt;
+            const p = person.releaseT;
+            reach = p < 0.9 ? smoothstep(0, 0.9, p) : 1 - smoothstep(1.4, 3.2, p);
+            if (p > 3.2) person.releaseT = -1;
+        }
+        person.upper.rotation.x = -0.5 - 0.22 * reach + 0.015 * sway;
+        person.arms.forEach((arm) => { arm.rotation.x = 1.4 + 0.45 * reach; });
+    } else {
+        person.root.rotation.z = 0.012 * sway;
+        person.upper.rotation.y = 0.25 * Math.sin(t * 0.13 + person.seed);
+    }
+    if (person.held?.userData.body) {
+        person.held.rotation.z = 0.08 * Math.sin(t * 1.3 + person.seed);
+    }
+}
+
+function createShore(scene) {
+    const group = new THREE.Group();
+    group.add(createGround(), createPier());
+
+    // 石階（右邊）與水邊的平石
+    const stepX = 9;
+    const stepEdge = shoreEdge(stepX);
+    [[0.62, 0.35], [0.36, 1.1], [0.1, 1.85]].forEach(([y, back]) => {
+        const step = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.26, 0.85), lambert('#625c54'));
+        step.position.set(stepX, y, stepEdge - back);
+        group.add(step);
+    });
+    const slabX = 23;
+    const slabEdge = shoreEdge(slabX);
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.34, 1.5), lambert('#57524c', { flatShading: true }));
+    slab.position.set(slabX, 0.14, slabEdge - 1.2);
+    slab.rotation.y = 0.2;
+    group.add(slab);
+
+    // 水邊散落的石頭
+    for (let i = 0; i < 26; i++) {
+        const x = rand(-60, 60);
+        if (Math.abs(x - PIER.x) < 2.5 || Math.abs(x - stepX) < 2 || Math.abs(x - slabX) < 2) continue;
+        group.add(createRock(x, shoreEdge(x) - rand(0.4, 1.6), rand(0.25, 0.7), rand(-0.05, 0.2)));
+    }
+
+    // 松樹
+    for (let i = 0; i < 18; i++) {
+        const side = i % 2 ? 1 : -1;
+        const x = side * rand(32, 85);
+        group.add(createPine(x, shoreEdge(x) + rand(5, 30)));
+    }
+
+    // 燈籠柱
+    const posts = [
+        createPolePost(PIER.x + 1.5, PIER.rootZ - 1, '#ff7a4a'),
+        createPolePost(14, shoreEdge(14) + 1.6, '#fff0d0'),
+        createPolePost(-19, shoreEdge(-19) + 2.2, '#ff7a4a'),
+        createPolePost(31, shoreEdge(31) + 2.4, '#ff7a4a')
+    ];
+    posts[0].position.y = PIER.deckY;
+    posts.slice(1).forEach((p) => { p.position.y = LAND_Y; });
+    group.add(...posts);
+
+    // 人
+    const people = [];
+    const place = (opts, x, y, z, yaw = 0) => {
+        const person = createPerson(opts);
+        person.root.position.set(x, y, z);
+        person.root.rotation.y = yaw;
+        group.add(person.root);
+        people.push(person);
+        return person;
+    };
+    const deck = PIER.deckY + 0.035;
+    const releasers = [
+        { person: place({ pose: 'crouch', robe: '#2c3a6b', obi: '#e8c35a', holding: 'toro' }, PIER.x - 0.4, deck, PIER.tipZ + 0.55), height: deck + 0.25 },
+        { person: place({ pose: 'crouch', robe: '#3f5a4a', obi: '#d9a7b0', holding: 'toro' }, stepX, 0.23, stepEdge - 1.95), height: 0.5 },
+        { person: place({ pose: 'crouch', robe: '#c9b48a', obi: '#5a2f3a', holding: 'toro' }, slabX, 0.31, slabEdge - 1.3, 0.2), height: 0.58 }
+    ];
+    place({ pose: 'stand', robe: '#e6e0d4', obi: '#b8322c', holding: 'chochin' }, PIER.x + 0.65, deck, PIER.tipZ + 1.4, -0.15);
+    place({ pose: 'stand', robe: '#8a3b4f', obi: '#f0d58a' }, PIER.x - 0.5, deck, PIER.tipZ + 5.2, 0.1);
+    place({ pose: 'stand', robe: '#ea8fa4', obi: '#fff3c8', scale: 0.62 }, PIER.x + 0.15, deck, PIER.tipZ + 5.4, -0.05);
+    place({ pose: 'stand', robe: '#23233a', obi: '#c8a26a', holding: 'chochin' }, stepX + 1.6, LAND_Y, stepEdge + 1.1, -0.3);
+    place({ pose: 'stand', robe: '#1f2f4f', obi: '#e0b860' }, -16, LAND_Y, shoreEdge(-16) + 1.6, 0.15);
+    place({ pose: 'stand', robe: '#d97a6a', obi: '#3a2a4a', holding: 'chochin' }, -15.3, LAND_Y, shoreEdge(-15.3) + 1.7, 0.1);
+    place({ pose: 'stand', robe: '#5b4a6b', obi: '#e8d6a8' }, 29, LAND_Y, shoreEdge(29) + 2.1, -0.4);
+    place({ pose: 'stand', robe: '#e6e0d4', obi: '#2c3a6b', scale: 0.65 }, 28.4, LAND_Y, shoreEdge(28.4) + 2.0, -0.4);
+
+    // 每個蹲著的人前方的放燈點（世界座標）
+    releasers.forEach((r) => {
+        const p = r.person.root.position;
+        const yaw = r.person.root.rotation.y;
+        r.x = p.x - Math.sin(yaw) * 0.62;
+        r.z = p.z - Math.cos(yaw) * 0.62;
+        r.cooldown = rand(0, 3);
+        r.hiddenFor = 0;
+    });
+
+    scene.add(group);
+
+    return {
+        edge: shoreEdge,
+
+        // 地面高度（給鏡頭用，避免鑽進岸裡）
+        groundAt(x, z) {
+            const d = z - shoreEdge(x);
+            if (d >= -0.7) return d >= 0 ? landHeight(x, d) : LAND_Y * 0.5;
+            if (Math.abs(x - PIER.x) < PIER.halfW && z > PIER.tipZ) return PIER.deckY;
+            return 0;
+        },
+
+        isWater(x, z) {
+            if (z > shoreEdge(x) - 0.9) return false;
+            if (Math.abs(x - PIER.x) < PIER.halfW + 0.3 && z > PIER.tipZ - 0.3) return false;
+            return true;
+        },
+
+        // 水燈不會漂上岸或穿過棧橋
+        keepInWater(lantern) {
+            const edge = shoreEdge(lantern.x) - 1.1;
+            if (lantern.z > edge) {
+                lantern.z = edge;
+                lantern.vz = Math.min(lantern.vz, 0);
+            }
+            const dx = lantern.x - PIER.x;
+            const clearance = PIER.halfW + 0.55;
+            if (lantern.z > PIER.tipZ - 0.5 && Math.abs(dx) < clearance) {
+                lantern.x = PIER.x + Math.sign(dx || 1) * clearance;
+            }
+        },
+
+        takeReleaseSpot() {
+            const r = releasers.reduce((best, cur) => (cur.cooldown < best.cooldown ? cur : best));
+            r.cooldown = rand(5, 8);
+            r.person.releaseT = 0;
+            r.hiddenFor = 4;
+            return { x: r.x + rand(-0.15, 0.15), z: r.z - 0.2, height: r.height };
+        },
+
+        update(dt, t, night) {
+            for (const r of releasers) {
+                r.cooldown -= dt;
+                r.hiddenFor -= dt;
+                if (r.person.held) r.person.held.visible = r.hiddenFor <= 0;
+            }
+            for (const person of people) {
+                updatePerson(person, dt, t);
+                const held = person.held;
+                if (held?.userData.body) updateChochin(held, t, night);
+                if (held?.userData.paper) {
+                    held.userData.paper.material.color.set('#ffe6b8').multiplyScalar(lerp(0.85, 0.95, night) * (1 + 0.08 * flicker(t, person.seed)));
+                    held.userData.glow.material.opacity = lerp(0.35, 0.65, night);
+                }
+            }
+            for (const post of posts) {
+                updateChochin(post.userData.lamp, t, night);
+                post.userData.light.intensity = lerp(0.3, 7, night) * (1 + 0.05 * flicker(t, post.position.x));
+            }
+        }
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -955,7 +1388,7 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x000000, 160, 950);
 
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.5, 9000);
-camera.position.set(0, 7.5, 42);
+camera.position.set(3, 4.6, 35);
 
 // 直式螢幕（手機）時加大視角，讓水平方向至少看得到約 50°，富士山不被裁掉
 function fitCamera() {
@@ -968,7 +1401,7 @@ function fitCamera() {
 fitCamera();
 
 const controls = new OrbitControls(camera, ui.canvas);
-const baseTarget = new THREE.Vector3(0, 3, -10);
+const baseTarget = new THREE.Vector3(-2, 1.8, -4);
 controls.target.copy(baseTarget);
 controls.enableDamping = true;
 controls.dampingFactor = 0.06;
@@ -1003,24 +1436,27 @@ scene.add(fuji, ridgeFar, ridgeNear);
 
 // 水面
 const water = new Water(new THREE.PlaneGeometry(8000, 8000), {
-    textureWidth: IS_MOBILE ? 512 : 1024,
-    textureHeight: IS_MOBILE ? 512 : 1024,
+    textureWidth: IS_MOBILE ? 1024 : 2048,
+    textureHeight: IS_MOBILE ? 1024 : 2048,
     waterNormals: createWaterNormals(256),
     sunDirection: new THREE.Vector3(0, 1, 0),
     sunColor: 0xffffff,
     waterColor: 0x0e1b30,
-    distortionScale: 1.6,
+    distortionScale: 0.55,
     fog: true
 });
 // 原版 Water shader 會加一個固定的 0.1 灰，夜裡湖面會發白；改成跟水色走。湖面也調得比海面平靜一些。
 water.material.fragmentShader = water.material.fragmentShader
     .replace('vec3( 0.1 ) + reflectionSample', 'waterColor * 0.35 + reflectionSample')
-    .replace('vec3( 1.5, 1.0, 1.5 )', 'vec3( 0.9, 1.0, 0.9 )');
+    .replace('vec3( 1.5, 1.0, 1.5 )', 'vec3( 0.9, 1.0, 0.9 )')
+    // 原本扭曲量隨距離倒數放大，近處倒影會被扯歪；加上上限讓倒影對準實物
+    .replace('( 0.001 + 1.0 / distance )', 'min( 0.001 + 1.0 / distance, 0.012 )');
 water.material.uniforms.size.value = 1.6;
 water.rotation.x = -Math.PI / 2;
 scene.add(water);
 
 const ripples = new Ripples(scene, 48);
+const shore = createShore(scene);
 
 // 後製：bloom 讓燭光與日月自然地暈開
 const composer = new EffectComposer(renderer);
@@ -1075,9 +1511,9 @@ function spawnLantern(data, { x, z, release = false } = {}) {
         id: data.id,
         message: data.message,
         x: x ?? rand(-45, 45),
-        z: z ?? rand(LAKE.far + 20, 14)
+        z: z ?? rand(LAKE.far + 20, SHORE_Z - 5)
     });
-    if (release) lantern.release();
+    if (release) lantern.release(1.0);
     lanterns.push(lantern);
 
     // 超過上限：讓最遠的老水燈漂走後就不再回來
@@ -1145,6 +1581,10 @@ async function placeAt(clientX, clientY) {
     if (!raycaster.ray.intersectPlane(waterPlane, point)) return;
     if (point.z < LAKE.far + 30 || Math.abs(point.x) > LAKE.halfWidth) {
         showToast('再近一點的水面吧');
+        return;
+    }
+    if (!shore.isWater(point.x, point.z)) {
+        showToast('請點在湖面上');
         return;
     }
     const message = pendingWish;
@@ -1233,7 +1673,7 @@ let flyTarget = null;
 // 可移動範圍：留在湖面上方，不會鑽到水下或飛出湖外
 const TARGET_BOUNDS = new THREE.Box3(
     new THREE.Vector3(-LAKE.halfWidth, 0.8, LAKE.far + 15),
-    new THREE.Vector3(LAKE.halfWidth, 25, 40)
+    new THREE.Vector3(LAKE.halfWidth, 25, 34)
 );
 
 const _forward = new THREE.Vector3();
@@ -1290,7 +1730,8 @@ function moveCamera(dt) {
     // 限制範圍
     const clamped = _shift.copy(controls.target).clamp(TARGET_BOUNDS.min, TARGET_BOUNDS.max).sub(controls.target);
     if (clamped.lengthSq() > 0) shiftView(clamped);
-    if (camera.position.y < 1.2) shiftView(_shift.set(0, 1.2 - camera.position.y, 0));
+    const minY = shore.groundAt(camera.position.x, camera.position.z) + 1.4;
+    if (camera.position.y < minY) shiftView(_shift.set(0, minY - camera.position.y, 0));
 }
 
 addEventListener('keydown', (e) => {
@@ -1386,7 +1827,7 @@ let firstFrame = true;
 
 function separate() {
     // 水燈彼此輕輕推開，不會疊在一起
-    const minDist = 2.4;
+    const minDist = 1.4;
     for (let i = 0; i < lanterns.length; i++) {
         const a = lanterns[i];
         a.pushX = 0;
@@ -1437,6 +1878,7 @@ function frame() {
         cameraPos: camera.position,
         night: skyState.night,
         ripples,
+        shore,
         pushX: 0,
         pushZ: 0
     };
@@ -1452,6 +1894,7 @@ function frame() {
         }
     }
     ripples.update(dt, lerp(0.5, 1, skyState.night));
+    shore.update(dt, elapsed, skyState.night);
 
     // 心願卡片跟著選中的水燈移動
     if (selected) {
