@@ -813,6 +813,7 @@ class Ripples {
 const store = {
     client: null,
     total: 0,
+    online: false,   // 最近一次讀寫 Supabase 是否成功
 
     async init() {
         try {
@@ -851,6 +852,7 @@ const store = {
                     .limit(limit);
                 if (!error && Array.isArray(data)) {
                     this.total = count ?? data.length;
+                    this.online = true;
                     return data.reverse();
                 }
                 console.warn('讀取 Supabase 失敗', error);
@@ -858,6 +860,7 @@ const store = {
                 console.warn('讀取 Supabase 失敗', error);
             }
         }
+        this.online = false;
         const local = this.readLocal();
         this.total = local.length;
         return local.slice(-limit);
@@ -882,12 +885,16 @@ const store = {
         if (this.client) {
             try {
                 const { data, error } = await this.client.from(TABLE).insert([row]).select('id').single();
-                if (!error && data?.id) return data.id;
+                if (!error && data?.id) {
+                    this.online = true;
+                    return data.id;
+                }
                 console.warn('寫入 Supabase 失敗，改存本地', error);
             } catch (error) {
                 console.warn('寫入 Supabase 失敗，改存本地', error);
             }
         }
+        this.online = false;
         const local = this.readLocal();
         const id = local.reduce((m, w) => Math.max(m, Number(w.id) || 0), 0) + 1;
         local.push({ id, message, timestamp: new Date().toISOString() });
@@ -924,7 +931,8 @@ function showToast(text, ms = 2800) {
 }
 
 function updateCount() {
-    ui.count.textContent = store.total > 0 ? `湖上已有 ${store.total} 個心願` : '';
+    const wishes = store.total > 0 ? `湖上已有 ${store.total} 個心願 · ` : '';
+    ui.count.textContent = wishes + (store.online ? '雲端已連線' : '未連上雲端，心願只存在這台裝置');
 }
 
 function fail(message) {
