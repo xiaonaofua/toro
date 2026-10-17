@@ -304,9 +304,99 @@
             70% { transform: scale(1.04, 0.96); opacity: 0.95; }
         }
 
+
+        /* 操作說明 */
+        #help {
+            position: fixed;
+            left: 16px;
+            bottom: max(18px, env(safe-area-inset-bottom));
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+        }
+        #helpToggle {
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            font-size: 15px;
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        #helpPanel {
+            display: none;
+            padding: 12px 16px;
+            border-radius: 12px;
+            background: var(--glass);
+            border: 1px solid var(--line);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            font-size: 12px;
+            line-height: 2;
+            letter-spacing: 0.06em;
+            color: var(--ink-dim);
+        }
+        body.help-open #helpPanel { display: block; }
+        #helpPanel kbd {
+            display: inline-block;
+            min-width: 20px;
+            padding: 0 5px;
+            margin-right: 2px;
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            font-family: ui-monospace, monospace;
+            font-size: 11px;
+            line-height: 18px;
+            text-align: center;
+            color: var(--ink);
+        }
+
+        /* 方向鈕 */
+        #movePad {
+            position: fixed;
+            right: 16px;
+            bottom: max(18px, env(safe-area-inset-bottom));
+            display: grid;
+            grid-template-columns: repeat(3, 40px);
+            grid-template-rows: repeat(3, 40px);
+            gap: 4px;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        #movePad button {
+            font-family: inherit;
+            font-size: 15px;
+            color: var(--ink);
+            background: var(--glass);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            cursor: pointer;
+            touch-action: none;
+            transition: background 0.15s;
+        }
+        #movePad button:hover { background: rgba(255, 255, 255, 0.1); }
+        #movePad button.active { background: rgba(255, 183, 102, 0.35); }
+        #movePad .up { grid-area: 1 / 2; }
+        #movePad .left { grid-area: 2 / 1; }
+        #movePad .right { grid-area: 2 / 3; }
+        #movePad .down { grid-area: 3 / 2; }
+        #movePad .rise { grid-area: 1 / 3; font-size: 12px; }
+        #movePad .sink { grid-area: 3 / 3; font-size: 12px; }
+        body.writing #movePad, body.writing #help { opacity: 0; pointer-events: none; }
+
         @media (max-width: 600px) {
             #title h1 { font-size: 22px; }
             #title { left: 16px; }
+            #movePad {
+                grid-template-columns: repeat(3, 34px);
+                grid-template-rows: repeat(3, 34px);
+                bottom: max(100px, env(safe-area-inset-bottom));
+            }
+            #help { bottom: max(100px, env(safe-area-inset-bottom)); }
         }
     </style>
     <script type="importmap">
@@ -329,6 +419,26 @@
     <div id="dock">
         <button id="releaseBtn" type="button">放一盞水燈</button>
         <div id="count"></div>
+    </div>
+
+    <div id="help">
+        <div id="helpPanel">
+            <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 或 方向鍵　前後左右</div>
+            <div><kbd>E</kbd><kbd>Q</kbd>　上升 / 下降　<kbd>Shift</kbd> 加速</div>
+            <div>左鍵拖曳 旋轉　右鍵拖曳 平移</div>
+            <div>滾輪 遠近　雙擊水面 飛過去</div>
+            <div>點水燈 看心願</div>
+        </div>
+        <button class="ghost-btn" id="helpToggle" type="button" aria-expanded="false" aria-controls="helpPanel" title="操作說明">?</button>
+    </div>
+
+    <div id="movePad" aria-label="移動">
+        <button class="up" data-dir="forward" type="button" title="前進（W / ↑）">▲</button>
+        <button class="left" data-dir="left" type="button" title="左移（A / ←）">◀</button>
+        <button class="right" data-dir="right" type="button" title="右移（D / →）">▶</button>
+        <button class="down" data-dir="back" type="button" title="後退（S / ↓）">▼</button>
+        <button class="rise" data-dir="up" type="button" title="上升（E）">升</button>
+        <button class="sink" data-dir="down" type="button" title="下降（Q）">降</button>
     </div>
 
     <div id="placeHint">

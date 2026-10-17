@@ -971,16 +971,19 @@ const controls = new OrbitControls(camera, ui.canvas);
 const baseTarget = new THREE.Vector3(0, 3, -10);
 controls.target.copy(baseTarget);
 controls.enableDamping = true;
-controls.dampingFactor = 0.05;
-controls.enablePan = false;
-controls.rotateSpeed = 0.45;
-controls.zoomSpeed = 0.6;
-controls.minDistance = 22;
-controls.maxDistance = 75;
-controls.minPolarAngle = THREE.MathUtils.degToRad(62);
-controls.maxPolarAngle = THREE.MathUtils.degToRad(86);
-controls.minAzimuthAngle = THREE.MathUtils.degToRad(-28);
-controls.maxAzimuthAngle = THREE.MathUtils.degToRad(28);
+controls.dampingFactor = 0.06;
+// 左鍵拖曳旋轉、右鍵拖曳平移（沿著水面）、滾輪縮放
+controls.enablePan = true;
+controls.screenSpacePanning = false;
+controls.panSpeed = 0.8;
+controls.rotateSpeed = 0.5;
+controls.zoomSpeed = 0.8;
+controls.minDistance = 8;
+controls.maxDistance = 110;
+controls.minPolarAngle = THREE.MathUtils.degToRad(40);
+controls.maxPolarAngle = THREE.MathUtils.degToRad(88);
+controls.minAzimuthAngle = THREE.MathUtils.degToRad(-75);
+controls.maxAzimuthAngle = THREE.MathUtils.degToRad(75);
 controls.update();
 
 // 光照
@@ -1208,12 +1211,161 @@ ui.form.addEventListener('submit', (e) => {
     setMode('placing');
 });
 
+// ---------------------------------------------------------------------------
+// 移動：鍵盤（WASD / 方向鍵 / Q E）、畫面上的方向鈕、雙擊水面飛過去
+// ---------------------------------------------------------------------------
+
+const MOVE_KEYS = {
+    KeyW: 'forward', ArrowUp: 'forward',
+    KeyS: 'back', ArrowDown: 'back',
+    KeyA: 'left', ArrowLeft: 'left',
+    KeyD: 'right', ArrowRight: 'right',
+    KeyE: 'up', PageUp: 'up', Space: 'up',
+    KeyQ: 'down', PageDown: 'down'
+};
+const held = new Set();      // 目前按住的方向（鍵盤與按鈕共用）
+let boost = false;
+const moveVelocity = new THREE.Vector3();
+const sway = new THREE.Vector3();
+const lastSway = new THREE.Vector3();
+let flyTarget = null;
+
+// 可移動範圍：留在湖面上方，不會鑽到水下或飛出湖外
+const TARGET_BOUNDS = new THREE.Box3(
+    new THREE.Vector3(-LAKE.halfWidth, 0.8, LAKE.far + 15),
+    new THREE.Vector3(LAKE.halfWidth, 25, 40)
+);
+
+const _forward = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _wish = new THREE.Vector3();
+const _shift = new THREE.Vector3();
+
+function isTyping(e) {
+    return e.target instanceof HTMLElement && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');
+}
+
+function shiftView(delta) {
+    camera.position.add(delta);
+    controls.target.add(delta);
+}
+
+function moveCamera(dt) {
+    camera.getWorldDirection(_forward);
+    _forward.y = 0;
+    if (_forward.lengthSq() < 1e-6) _forward.set(0, 0, -1);
+    _forward.normalize();
+    _right.crossVectors(_forward, THREE.Object3D.DEFAULT_UP);
+
+    _wish.set(0, 0, 0);
+    if (held.has('forward')) _wish.add(_forward);
+    if (held.has('back')) _wish.sub(_forward);
+    if (held.has('right')) _wish.add(_right);
+    if (held.has('left')) _wish.sub(_right);
+    if (held.has('up')) _wish.y += 0.6;
+    if (held.has('down')) _wish.y -= 0.6;
+    if (_wish.lengthSq() > 0) {
+        _wish.normalize().multiplyScalar(boost ? 30 : 12);
+        flyTarget = null;
+    }
+
+    // 平滑加減速，放開按鍵時會慢慢停下
+    const k = 1 - Math.exp(-dt * (_wish.lengthSq() > 0 ? 5 : 3.5));
+    moveVelocity.lerp(_wish, k);
+    if (moveVelocity.lengthSq() > 1e-4) {
+        shiftView(_shift.copy(moveVelocity).multiplyScalar(dt));
+    }
+
+    // 雙擊水面後，平滑地滑過去
+    if (flyTarget) {
+        _shift.subVectors(flyTarget, controls.target);
+        _shift.y = 0;
+        if (_shift.length() < 0.2) {
+            flyTarget = null;
+        } else {
+            shiftView(_shift.multiplyScalar(1 - Math.exp(-dt * 2.2)));
+        }
+    }
+
+    // 限制範圍
+    const clamped = _shift.copy(controls.target).clamp(TARGET_BOUNDS.min, TARGET_BOUNDS.max).sub(controls.target);
+    if (clamped.lengthSq() > 0) shiftView(clamped);
+    if (camera.position.y < 1.2) shiftView(_shift.set(0, 1.2 - camera.position.y, 0));
+}
+
 addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         pendingWish = '';
         setMode('idle');
+        return;
+    }
+    if (isTyping(e) || mode === 'writing' || e.metaKey || e.ctrlKey || e.altKey) return;
+    boost = e.shiftKey;
+    const dir = MOVE_KEYS[e.code];
+    if (dir) {
+        held.add(dir);
+        e.preventDefault(); // 避免方向鍵 / 空白鍵捲動頁面
     }
 });
+
+addEventListener('keyup', (e) => {
+    boost = e.shiftKey;
+    const dir = MOVE_KEYS[e.code];
+    if (dir) held.delete(dir);
+});
+
+// 視窗失焦時放開所有按鍵，避免鏡頭一直滑走
+addEventListener('blur', () => held.clear());
+
+// 畫面上的方向鈕：按住持續移動
+document.querySelectorAll('#movePad [data-dir]').forEach((btn) => {
+    const dir = btn.dataset.dir;
+    const release = () => {
+        held.delete(dir);
+        btn.classList.remove('active');
+    };
+    btn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        btn.setPointerCapture(e.pointerId);
+        held.add(dir);
+        btn.classList.add('active');
+    });
+    btn.addEventListener('pointerup', release);
+    btn.addEventListener('pointercancel', release);
+    btn.addEventListener('lostpointercapture', release);
+});
+
+ui.canvas.addEventListener('dblclick', (e) => {
+    if (mode !== 'idle') return;
+    pointerNdc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+    raycaster.setFromCamera(pointerNdc, camera);
+    const point = new THREE.Vector3();
+    if (raycaster.ray.intersectPlane(waterPlane, point)) {
+        flyTarget = point.clamp(TARGET_BOUNDS.min, TARGET_BOUNDS.max);
+    }
+});
+
+// 右鍵用來平移，不要跳出瀏覽器選單
+ui.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+const helpToggle = document.getElementById('helpToggle');
+helpToggle.addEventListener('click', () => {
+    const open = document.body.classList.toggle('help-open');
+    helpToggle.setAttribute('aria-expanded', String(open));
+    try {
+        localStorage.setItem('toroHelpClosed', open ? '0' : '1');
+    } catch {
+        // 忽略
+    }
+});
+try {
+    if (localStorage.getItem('toroHelpClosed') !== '1' && !IS_MOBILE) {
+        document.body.classList.add('help-open');
+        helpToggle.setAttribute('aria-expanded', 'true');
+    }
+} catch {
+    // 忽略
+}
 
 addEventListener('resize', () => {
     fitCamera();
@@ -1270,11 +1422,10 @@ function frame() {
     }
 
     // 鏡頭像呼吸一樣極輕微地晃動
-    controls.target.set(
-        baseTarget.x + Math.sin(elapsed * 0.07) * 0.8,
-        baseTarget.y + Math.sin(elapsed * 0.11) * 0.2,
-        baseTarget.z
-    );
+    sway.set(Math.sin(elapsed * 0.07) * 0.6, Math.sin(elapsed * 0.11) * 0.15, 0);
+    controls.target.add(sway).sub(lastSway);
+    lastSway.copy(sway);
+    moveCamera(dt);
     controls.update();
 
     sky.position.copy(camera.position);
