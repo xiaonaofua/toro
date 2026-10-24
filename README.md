@@ -25,6 +25,7 @@
 - Three.js（Water 反射、自訂天空 Shader、Bloom 後製）
 - Supabase PostgreSQL（`water_lanterns` 資料表；無法連線時退回 localStorage）
 - GitHub Pages
+- GitHub Actions：`.github/workflows/keep-supabase-awake.yml` 每兩天讀一次資料表，避免 Supabase 免費專案因閒置被暫停（失敗時 GitHub 會寄信通知）
 
 ## 🚀 本地執行
 
