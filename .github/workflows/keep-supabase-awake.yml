@@ -1,0 +1,46 @@
+# 讓 Supabase 免費專案保持活躍
+#
+# Supabase 免費專案在一段時間沒有活動後會自動暫停（目前約 7 天）。
+# 這個排程每兩天從 GitHub 的伺服器讀一次 water_lanterns 資料表，
+# 相當於有人打開網頁看了一次水燈，資料庫就不會因為閒置而被暫停。
+#
+# 讀取失敗時（例如專案已經被暫停）這次執行會標成失敗，
+# GitHub 會寄信通知儲存庫擁有者，看到信就去 Supabase 後台按 Restore。
+#
+# 也可以到 Actions 分頁手動執行（Run workflow）。
+
+name: Keep Supabase awake
+
+on:
+  schedule:
+    - cron: '17 3 */2 * *'   # 每兩天 03:17（UTC）
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_URL: https://bvdgbnlzfyygosqtknaw.supabase.co
+      # 與 main.js 相同的公開 anon key（只能讀取與新增水燈，本來就公開在網頁裡）
+      SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ2ZGdibmx6Znl5Z29zcXRrbmF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0NzM3OTQsImV4cCI6MjA3MDA0OTc5NH0.OYPJoXN9LNQuIfyWyDXs0V2BvdbS7Rkw-mXcVskrv4g
+    steps:
+      - name: 讀取一次水燈資料
+        run: |
+          for attempt in 1 2 3; do
+            code=$(curl -sS -o body.txt -w '%{http_code}' --max-time 30 \
+              "$SUPABASE_URL/rest/v1/water_lanterns?select=id&order=id.desc&limit=1" \
+              -H "apikey: $SUPABASE_ANON_KEY" \
+              -H "Authorization: Bearer $SUPABASE_ANON_KEY") || code=000
+            echo "第 $attempt 次：HTTP $code"
+            cat body.txt 2>/dev/null; echo
+            if [ "$code" = "200" ]; then
+              echo "Supabase 正常回應，資料庫保持活躍。"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::Supabase 沒有正常回應，專案可能已被暫停。請到 https://supabase.com/dashboard 按 Restore project。"
+          exit 1
