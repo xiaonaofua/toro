@@ -1,10 +1,13 @@
 # 讓 Supabase 免費專案保持活躍
 #
-# Supabase 免費專案在一段時間沒有活動後會自動暫停（目前約 7 天）。
-# 這個排程每兩天從 GitHub 的伺服器讀一次 water_lanterns 資料表，
-# 相當於有人打開網頁看了一次水燈，資料庫就不會因為閒置而被暫停。
+# Supabase 免費專案在一段時間沒有「足夠的活動」後會自動暫停（目前約 7 天）。
+# 實測每兩天讀一行資料仍會收到暫停警告，所以改成：
+#   1. 每天執行一次
+#   2. 呼叫 keep_alive() 函式，真正寫一次資料庫（只更新 heartbeat 表裡唯一的一行，不會產生垃圾資料）
+#   3. 再讀一次 water_lanterns，確認網頁用的資料表也正常
+# 建立 heartbeat 表與 keep_alive() 的 SQL 在 supabase/keep_alive.sql。
 #
-# 讀取失敗時（例如專案已經被暫停）這次執行會標成失敗，
+# 失敗時（例如專案已經被暫停）這次執行會標成失敗，
 # GitHub 會寄信通知儲存庫擁有者，看到信就去 Supabase 後台按 Restore。
 #
 # 也可以到 Actions 分頁手動執行（Run workflow）。
@@ -13,7 +16,7 @@ name: Keep Supabase awake
 
 on:
   schedule:
-    - cron: '17 3 */2 * *'   # 每兩天 03:17（UTC）
+    - cron: '23 2 * * *'   # 每天 02:23（UTC）
   workflow_dispatch:
 
 permissions: {}
@@ -24,20 +27,35 @@ jobs:
     timeout-minutes: 5
     env:
       SUPABASE_URL: https://bvdgbnlzfyygosqtknaw.supabase.co
-      # 與 main.js 相同的公開 anon key（只能讀取與新增水燈，本來就公開在網頁裡）
+      # 與 main.js 相同的公開 anon key（本來就公開在網頁裡）
       SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ2ZGdibmx6Znl5Z29zcXRrbmF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0NzM3OTQsImV4cCI6MjA3MDA0OTc5NH0.OYPJoXN9LNQuIfyWyDXs0V2BvdbS7Rkw-mXcVskrv4g
     steps:
-      - name: 讀取一次水燈資料
+      - name: 寫一次心跳、讀一次水燈資料
         run: |
-          for attempt in 1 2 3; do
-            code=$(curl -sS -o body.txt -w '%{http_code}' --max-time 30 \
-              "$SUPABASE_URL/rest/v1/water_lanterns?select=id&order=id.desc&limit=1" \
+          request() {
+            # $1: 方法  $2: 路徑  $3: 內容（可省略）；輸出 HTTP 狀態碼，連不上時為 000
+            local code
+            code=$(curl -sS -o body.txt -w '%{http_code}' --max-time 30 -X "$1" \
+              "$SUPABASE_URL$2" \
               -H "apikey: $SUPABASE_ANON_KEY" \
-              -H "Authorization: Bearer $SUPABASE_ANON_KEY") || code=000
-            echo "第 $attempt 次：HTTP $code"
-            cat body.txt 2>/dev/null; echo
-            if [ "$code" = "200" ]; then
-              echo "Supabase 正常回應，資料庫保持活躍。"
+              -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+              -H "Content-Type: application/json" \
+              ${3:+-d "$3"}) || code=000
+            echo "$code"
+          }
+
+          for attempt in 1 2 3; do
+            beat=$(request POST /rest/v1/rpc/keep_alive '{}')
+            echo "第 $attempt 次 寫入心跳：HTTP $beat"; cat body.txt 2>/dev/null; echo
+            got=$(request GET '/rest/v1/water_lanterns?select=id&order=id.desc&limit=1')
+            echo "第 $attempt 次 讀取水燈：HTTP $got"; cat body.txt 2>/dev/null; echo
+
+            if [ "$got" = "200" ] && [ "$beat" = "200" ]; then
+              echo "Supabase 正常回應，已寫入心跳。"
+              exit 0
+            fi
+            if [ "$got" = "200" ] && [ "$beat" = "404" ]; then
+              echo "::warning::找不到 keep_alive()，只做了讀取。請在 Supabase 的 SQL Editor 執行 supabase/keep_alive.sql。"
               exit 0
             fi
             sleep 20
