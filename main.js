@@ -1075,7 +1075,13 @@ function createHeldToro() {
 const ANIMALS = {
     fox: { fur: '#d27a35', light: '#f3e6d4', dark: '#24160e', nose: '#24160e' },
     rabbit: { fur: '#eee8de', light: '#ffffff', dark: '#2a1a12', nose: '#e58a9a', inner: '#f2b5c0' },
-    tanuki: { fur: '#a3825a', light: '#ece0c8', dark: '#22170f', nose: '#140d08' }
+    tanuki: { fur: '#a3825a', light: '#ece0c8', dark: '#22170f', nose: '#140d08', eye: '#f2e8d2' },
+    // 熊貓的手腳是黑色的（limb），眼睛在黑眼圈上所以用亮色
+    panda: { fur: '#f4f2ee', light: '#ffffff', dark: '#1b1b1d', nose: '#1b1b1d', eye: '#f4f2ee', limb: '#1b1b1d' },
+    // 柴犬：赤柴的橘棕毛，口鼻與臉頰是奶油色（裏白）
+    shiba: { fur: '#d98a3d', light: '#f7ecd9', dark: '#1e140c', nose: '#1e140c', inner: '#f7ecd9' },
+    cat: { fur: '#9a9690', light: '#efe9e0', dark: '#1e1a16', nose: '#e58a9a', inner: '#f2b5c0', stripe: '#5f5a54' },
+    bear: { fur: '#6b4a2f', light: '#c9a77d', dark: '#1a120c', nose: '#1a120c' }
 };
 
 function buildAnimal(kind, head, hips, add) {
@@ -1118,12 +1124,50 @@ function buildAnimal(kind, head, hips, add) {
             sphere(0.05, c.dark, s * 0.052, 0.012, -0.098, head, 1.25, 0.85, 0.55);   // 眼罩
             sphere(0.042, c.dark, s * 0.085, 0.1, 0.01, head, 1, 0.9, 0.5);
         }
+    } else if (kind === 'panda') {
+        // 熊貓：斜斜的黑眼圈、黑色圓耳、白色短口鼻
+        sphere(0.05, c.light, 0, -0.05, -0.105, head, 1.1, 0.8, 0.9);
+        sphere(0.02, c.nose, 0, -0.03, -0.15, head, 1.2, 0.8, 1);
+        for (const s of [-1, 1]) {
+            const patch = sphere(0.045, c.dark, s * 0.052, 0.015, -0.1, head, 0.9, 1.25, 0.55);
+            patch.rotation.z = s * 0.5;
+            sphere(0.048, c.dark, s * 0.09, 0.1, 0.0, head, 1, 1, 0.6);
+        }
+    } else if (kind === 'shiba') {
+        // 柴犬：小三角耳、奶油色的短口鼻與臉頰
+        sphere(0.055, c.light, 0, -0.045, -0.115, head, 1, 0.8, 1.2);
+        sphere(0.02, c.nose, 0, -0.025, -0.18, head);
+        for (const s of [-1, 1]) {
+            const ear = add(new THREE.ConeGeometry(0.05, 0.1, 4), c.fur, s * 0.07, 0.125, -0.01, head);
+            ear.rotation.z = -s * 0.2;
+            const inner = add(new THREE.ConeGeometry(0.028, 0.06, 4), c.inner, s * 0.068, 0.12, -0.03, head);
+            inner.rotation.z = -s * 0.2;
+            sphere(0.04, c.light, s * 0.065, -0.05, -0.085, head, 1, 0.8, 0.8);
+            sphere(0.012, c.light, s * 0.04, 0.07, -0.11, head);   // 眉毛上的白點（麻呂眉）
+        }
+    } else if (kind === 'cat') {
+        // 貓：三角耳、小口鼻、額頭的虎斑紋
+        sphere(0.04, c.light, 0, -0.045, -0.11, head, 1.2, 0.8, 0.8);
+        sphere(0.013, c.nose, 0, -0.025, -0.14, head);
+        for (const s of [-1, 1]) {
+            const ear = add(new THREE.ConeGeometry(0.05, 0.1, 4), c.fur, s * 0.075, 0.12, 0.0, head);
+            ear.rotation.z = -s * 0.3;
+            const inner = add(new THREE.ConeGeometry(0.028, 0.06, 4), c.inner, s * 0.072, 0.115, -0.02, head);
+            inner.rotation.z = -s * 0.3;
+        }
+        for (const x of [-0.03, 0, 0.03]) sphere(0.012, c.stripe, x, 0.1, -0.08, head, 1, 2.2, 1);
+    } else if (kind === 'bear') {
+        // 熊：圓耳朵、淺色口鼻
+        sphere(0.055, c.light, 0, -0.045, -0.105, head, 1.1, 0.85, 1);
+        sphere(0.022, c.nose, 0, -0.025, -0.155, head, 1.2, 0.8, 1);
+        for (const s of [-1, 1]) {
+            sphere(0.045, c.fur, s * 0.09, 0.1, 0.0, head, 1, 1, 0.6);
+            sphere(0.025, c.light, s * 0.09, 0.1, -0.02, head, 1, 1, 0.4);
+        }
     }
-    // 眼睛
-    // 狸貓的眼睛在深色眼罩上，用亮色眼珠才看得見
-    const eyeColor = kind === 'tanuki' ? '#f2e8d2' : c.dark;
-    const eyeZ = kind === 'tanuki' ? -0.13 : -0.122;
-    for (const s of [-1, 1]) sphere(0.017, eyeColor, s * 0.05, 0.025, eyeZ, head);
+    // 眼睛（在深色眼罩、黑眼圈上的用亮色眼珠才看得見）
+    const eyeZ = c.eye ? -0.13 : -0.122;
+    for (const s of [-1, 1]) sphere(0.017, c.eye ?? c.dark, s * 0.05, 0.025, eyeZ, head);
 
     // 尾巴（掛在髖部後面，蹲下時跟著動）
     const tail = new THREE.Group();
@@ -1138,6 +1182,20 @@ function buildAnimal(kind, head, hips, add) {
     } else if (kind === 'tanuki') {
         tail.rotation.x = -0.35;
         [0.08, 0.085, 0.08, 0.07].forEach((r, i) => sphere(r, i % 2 ? c.dark : c.fur, 0, 0, 0.08 + i * 0.09, tail));
+    } else if (kind === 'panda' || kind === 'bear') {
+        sphere(0.05, c.fur, 0, 0, 0.04, tail);
+    } else if (kind === 'shiba') {
+        // 柴犬招牌的捲尾巴，捲在背上
+        const curl = add(new THREE.TorusGeometry(0.075, 0.035, 8, 18, Math.PI * 1.6), c.fur, 0, 0.1, 0.05, tail);
+        curl.rotation.y = Math.PI / 2;
+        sphere(0.032, c.light, 0, 0.18, 0.02, tail);
+    } else if (kind === 'cat') {
+        // 細長、末端往上翹的貓尾巴
+        tail.rotation.x = -0.3;
+        for (let i = 0; i < 6; i++) {
+            const a = i / 5;
+            sphere(0.032, i % 2 ? c.stripe : c.fur, 0, a * a * 0.3, 0.06 + a * 0.3, tail);
+        }
     }
     return tail;
 }
@@ -1150,7 +1208,7 @@ function createPerson({
     hair = '#17110d', hairStyle = 'short', skin = '#e3bf9c', shorts = false, scale = 1, holding = false,
     animal = null
 }) {
-    if (animal) skin = ANIMALS[animal].fur;   // 手腳露出來的地方是毛色
+    if (animal) skin = ANIMALS[animal].limb ?? ANIMALS[animal].fur;   // 手腳露出來的地方是毛色
     const root = new THREE.Group();
     const add = (geometry, color, x, y, z, parent) => {
         const mesh = new THREE.Mesh(geometry, lambert(color));
@@ -1454,34 +1512,34 @@ function createShore(scene) {
     const pierB = new THREE.Vector3(PIER.x + 0.45, deck, PIER.rootZ - 1.5);
     const strollers = [];
     const followers = [];
-    const parent = place({ outfit: 'suit', top: '#2b2f36', bottom: '#2b2f36', accent: '#9b2335', hair: '#a9a9a9', hairStyle: 'short', skin: '#c99a6e' }, pierA);
+    const parent = place({ animal: 'panda', outfit: 'suit', top: '#2b2f36', bottom: '#2b2f36', accent: '#9b2335' }, pierA);
     strollers.push({ person: parent, points: [pierB, pierA], i: 0, wait: rand(2, 6) });
     followers.push({
-        person: place({ outfit: 'tshirt', top: '#f2c14e', bottom: '#3b5998', shorts: true, hair: '#2a1a12', hairStyle: 'curly', skin: '#8d5a3b', scale: 0.62 }, pierA.clone().add(new THREE.Vector3(0.42, 0, 0.2))),
+        person: place({ animal: 'panda', outfit: 'tshirt', top: '#f2c14e', bottom: '#3b5998', shorts: true, scale: 0.62 }, pierA.clone().add(new THREE.Vector3(0.42, 0, 0.2))),
         leader: parent,
         offset: new THREE.Vector3(0.42, 0, 0.2)
     });
 
     // 棧橋尖端：穿白浴衣、手托水燈，靜靜看著水面
-    place({ outfit: 'yukata', top: '#e6e0d4', accent: '#b8322c', hair: '#17110d', hairStyle: 'bun', skin: '#e3bf9c', holding: true },
+    place({ animal: 'cat', outfit: 'yukata', top: '#e6e0d4', accent: '#b8322c', holding: true },
         new THREE.Vector3(PIER.x + 0.65, deck, PIER.tipZ + 1.2), -0.15);
 
     // 岸上沿著水邊散步的人
-    const shoreWalker = place({ outfit: 'tshirt', top: '#2e8b57', bottom: '#2d3446', hair: '#17110d', hairStyle: 'long', skin: '#5a3a26' }, landAt(-16, 1.6));
+    const shoreWalker = place({ animal: 'bear', outfit: 'tshirt', top: '#2e8b57', bottom: '#2d3446' }, landAt(-16, 1.6));
     strollers.push({ person: shoreWalker, points: [landAt(-26, 1.8), landAt(-11, 1.4), landAt(-16, 2.4)], i: 0, wait: rand(1, 4) });
-    const mother = place({ outfit: 'dress', top: '#5b4a6b', bottom: '#5b4a6b', hair: '#17110d', hairStyle: 'long', skin: '#c99a6e' }, landAt(29, 2.1));
+    const mother = place({ animal: 'shiba', outfit: 'dress', top: '#5b4a6b', bottom: '#5b4a6b' }, landAt(29, 2.1));
     strollers.push({ person: mother, points: [landAt(36, 2.4), landAt(27, 1.8)], i: 0, wait: rand(3, 8) });
     followers.push({
-        person: place({ outfit: 'dress', top: '#9ec9e8', bottom: '#9ec9e8', hair: '#d9b56a', hairStyle: 'long', skin: '#f1d3bd', scale: 0.65 }, landAt(28.5, 2.0)),
+        person: place({ animal: 'shiba', outfit: 'dress', top: '#9ec9e8', bottom: '#9ec9e8', scale: 0.65 }, landAt(28.5, 2.0)),
         leader: mother,
         offset: new THREE.Vector3(-0.5, 0, 0.15)
     });
 
     // 站著看湖的人（手上托著水燈或空手）
-    place({ outfit: 'suit', top: '#1f2f4f', bottom: '#1f2f4f', accent: '#c8a26a', hair: '#6b4226', hairStyle: 'short', skin: '#f1d3bd', holding: true }, landAt(stepX + 1.6, 1.1), -0.3);
-    place({ outfit: 'yukata', top: '#d97a6a', accent: '#3a2a4a', hair: '#d9b56a', hairStyle: 'bun', skin: '#f1d3bd', holding: true }, landAt(-15.3, 1.7), 0.1);
-    place({ outfit: 'dress', top: '#7a1f3d', bottom: '#7a1f3d', hair: '#9c4a22', hairStyle: 'long', skin: '#f1d3bd' }, landAt(PIER.x - 2.8, 1.4), 0.25);
-    place({ outfit: 'tshirt', top: '#f4f1ea', bottom: '#56606e', shorts: true, hair: '#4a2e1c', hairStyle: 'buzz', skin: '#e0b48f' }, landAt(PIER.x + 3.2, 1.2), -0.2);
+    place({ animal: 'shiba', outfit: 'suit', top: '#1f2f4f', bottom: '#1f2f4f', accent: '#c8a26a', holding: true }, landAt(stepX + 1.6, 1.1), -0.3);
+    place({ animal: 'cat', outfit: 'yukata', top: '#d97a6a', accent: '#3a2a4a', holding: true }, landAt(-15.3, 1.7), 0.1);
+    place({ animal: 'rabbit', outfit: 'dress', top: '#7a1f3d', bottom: '#7a1f3d' }, landAt(PIER.x - 2.8, 1.4), 0.25);
+    place({ animal: 'panda', outfit: 'tshirt', top: '#f4f1ea', bottom: '#56606e', shorts: true }, landAt(PIER.x + 3.2, 1.2), -0.2);
 
     scene.add(group);
 
