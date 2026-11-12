@@ -1071,13 +1071,86 @@ function createHeldToro() {
     return group;
 }
 
+// 擬人動物（放水燈的人）：毛色、頭、耳朵、口鼻與尾巴
+const ANIMALS = {
+    fox: { fur: '#d27a35', light: '#f3e6d4', dark: '#24160e', nose: '#24160e' },
+    rabbit: { fur: '#eee8de', light: '#ffffff', dark: '#2a1a12', nose: '#e58a9a', inner: '#f2b5c0' },
+    tanuki: { fur: '#a3825a', light: '#ece0c8', dark: '#22170f', nose: '#140d08' }
+};
+
+function buildAnimal(kind, head, hips, add) {
+    const c = ANIMALS[kind];
+    const sphere = (r, color, x, y, z, parent, sx = 1, sy = 1, sz = 1) => {
+        const mesh = add(new THREE.SphereGeometry(r, 14, 10), color, x, y, z, parent);
+        mesh.scale.set(sx, sy, sz);
+        return mesh;
+    };
+    head.scale.setScalar(1.15);   // 動物的頭稍微大一點，比較可愛
+    sphere(0.13, c.fur, 0, 0, 0, head, 1, 0.95, 1);
+
+    if (kind === 'fox') {
+        // 尖尖的口鼻與三角耳
+        const muzzle = add(new THREE.ConeGeometry(0.062, 0.14, 10), c.light, 0, -0.035, -0.15, head);
+        muzzle.rotation.x = -Math.PI / 2;
+        sphere(0.02, c.nose, 0, -0.035, -0.222, head);
+        for (const s of [-1, 1]) {
+            const ear = add(new THREE.ConeGeometry(0.055, 0.14, 4), c.fur, s * 0.075, 0.13, 0.0, head);
+            ear.rotation.z = -s * 0.25;
+            const tip = add(new THREE.ConeGeometry(0.025, 0.05, 4), c.dark, s * 0.092, 0.19, 0.0, head);
+            tip.rotation.z = -s * 0.25;
+            sphere(0.042, c.light, s * 0.07, -0.05, -0.08, head, 1, 0.8, 0.8);   // 白色臉頰
+        }
+    } else if (kind === 'rabbit') {
+        // 圓圓的口鼻與長耳朵
+        sphere(0.05, c.light, 0, -0.04, -0.105, head, 1.1, 0.8, 0.7);
+        sphere(0.016, c.nose, 0, -0.02, -0.14, head);
+        for (const s of [-1, 1]) {
+            const ear = sphere(0.04, c.fur, s * 0.045, 0.25, 0.01, head, 1, 4, 0.6);
+            ear.rotation.z = s * 0.15;
+            const inner = sphere(0.025, c.inner, s * 0.045, 0.25, -0.006, head, 1, 3.6, 0.4);
+            inner.rotation.z = s * 0.15;
+        }
+    } else if (kind === 'tanuki') {
+        // 狸貓：深色眼罩、圓耳朵、淺色口鼻
+        sphere(0.056, c.light, 0, -0.045, -0.1, head, 1, 0.8, 1.1);
+        sphere(0.018, c.nose, 0, -0.03, -0.158, head);
+        for (const s of [-1, 1]) {
+            sphere(0.05, c.dark, s * 0.052, 0.012, -0.098, head, 1.25, 0.85, 0.55);   // 眼罩
+            sphere(0.042, c.dark, s * 0.085, 0.1, 0.01, head, 1, 0.9, 0.5);
+        }
+    }
+    // 眼睛
+    // 狸貓的眼睛在深色眼罩上，用亮色眼珠才看得見
+    const eyeColor = kind === 'tanuki' ? '#f2e8d2' : c.dark;
+    const eyeZ = kind === 'tanuki' ? -0.13 : -0.122;
+    for (const s of [-1, 1]) sphere(0.017, eyeColor, s * 0.05, 0.025, eyeZ, head);
+
+    // 尾巴（掛在髖部後面，蹲下時跟著動）
+    const tail = new THREE.Group();
+    tail.position.set(0, -0.08, 0.16);
+    hips.add(tail);
+    if (kind === 'fox') {
+        tail.rotation.x = -0.55;
+        sphere(0.085, c.fur, 0, 0, 0.17, tail, 1, 1, 2.3);
+        sphere(0.07, c.light, 0, 0, 0.36, tail, 1, 1, 1.2);
+    } else if (kind === 'rabbit') {
+        sphere(0.07, c.light, 0, 0, 0.06, tail);
+    } else if (kind === 'tanuki') {
+        tail.rotation.x = -0.35;
+        [0.08, 0.085, 0.08, 0.07].forEach((r, i) => sphere(r, i % 2 ? c.dark : c.fur, 0, 0, 0.08 + i * 0.09, tail));
+    }
+    return tail;
+}
+
 // 岸上的人：帶關節的低多邊形人偶（髖、大腿、小腿、軀幹、頭、手臂），可以站、走、蹲。面向 -z。
 // outfit：yukata 浴衣 / suit 西裝 / tshirt T 恤 / dress 洋裝
 // hairStyle：bun 盤髮 / short 短髮 / long 長髮 / curly 捲髮 / buzz 平頭
 function createPerson({
     outfit = 'yukata', top, bottom = '#2d3446', accent = '#e8c35a',
-    hair = '#17110d', hairStyle = 'short', skin = '#e3bf9c', shorts = false, scale = 1, holding = false
+    hair = '#17110d', hairStyle = 'short', skin = '#e3bf9c', shorts = false, scale = 1, holding = false,
+    animal = null
 }) {
+    if (animal) skin = ANIMALS[animal].fur;   // 手腳露出來的地方是毛色
     const root = new THREE.Group();
     const add = (geometry, color, x, y, z, parent) => {
         const mesh = new THREE.Mesh(geometry, lambert(color));
@@ -1137,15 +1210,19 @@ function createPerson({
     const head = new THREE.Group();
     head.position.y = 0.65;
     torso.add(head);
-    add(new THREE.SphereGeometry(0.125, 14, 10), skin, 0, 0, 0, head);
-    const cap = { buzz: 0.42, short: 0.55, bun: 0.55, long: 0.58, curly: 0.6 }[hairStyle] ?? 0.55;
-    add(new THREE.SphereGeometry(hairStyle === 'buzz' ? 0.128 : 0.134, 14, 10, 0, Math.PI * 2, 0, Math.PI * cap), hair, 0, 0.012, 0.012, head);
-    if (hairStyle === 'bun') add(new THREE.SphereGeometry(0.06, 10, 8), hair, 0, 0.1, 0.09, head);
-    if (hairStyle === 'long') add(new THREE.BoxGeometry(0.24, 0.32, 0.08), hair, 0, -0.1, 0.1, head);
-    if (hairStyle === 'curly') {
-        for (let i = 0; i < 7; i++) {
-            const a = (i / 7) * Math.PI * 2;
-            add(new THREE.SphereGeometry(0.06, 8, 6), hair, Math.cos(a) * 0.1, 0.07, Math.sin(a) * 0.1 + 0.02, head);
+    if (animal) {
+        buildAnimal(animal, head, hips, add);
+    } else {
+        add(new THREE.SphereGeometry(0.125, 14, 10), skin, 0, 0, 0, head);
+        const cap = { buzz: 0.42, short: 0.55, bun: 0.55, long: 0.58, curly: 0.6 }[hairStyle] ?? 0.55;
+        add(new THREE.SphereGeometry(hairStyle === 'buzz' ? 0.128 : 0.134, 14, 10, 0, Math.PI * 2, 0, Math.PI * cap), hair, 0, 0.012, 0.012, head);
+        if (hairStyle === 'bun') add(new THREE.SphereGeometry(0.06, 10, 8), hair, 0, 0.1, 0.09, head);
+        if (hairStyle === 'long') add(new THREE.BoxGeometry(0.24, 0.32, 0.08), hair, 0, -0.1, 0.1, head);
+        if (hairStyle === 'curly') {
+            for (let i = 0; i < 7; i++) {
+                const a = (i / 7) * Math.PI * 2;
+                add(new THREE.SphereGeometry(0.06, 8, 6), hair, Math.cos(a) * 0.1, 0.07, Math.sin(a) * 0.1 + 0.02, head);
+            }
         }
     }
 
@@ -1349,16 +1426,16 @@ function createShore(scene) {
 
     // 放燈的人：在岸上捧起一盞水燈 → 走到水邊 → 蹲下放進水裡 → 站起來走回岸上
     const releaserDefs = [
-        {   // 棧橋：金髮、藍 T 恤配牛仔褲
-            opts: { outfit: 'tshirt', top: '#2f6db5', bottom: '#33415c', hair: '#d9b56a', hairStyle: 'short', skin: '#f1d3bd' },
+        {   // 棧橋：狐狸，藍 T 恤配牛仔褲
+            opts: { animal: 'fox', outfit: 'tshirt', top: '#2f6db5', bottom: '#33415c' },
             path: [landAt(PIER.x - 1.4, 1.6), new THREE.Vector3(PIER.x - 0.55, deck, PIER.rootZ - 1), new THREE.Vector3(PIER.x - 0.55, deck, PIER.tipZ + 0.4)]
         },
-        {   // 石階：綠色浴衣、黑色盤髮
-            opts: { outfit: 'yukata', top: '#3f5a4a', accent: '#d9a7b0', hair: '#17110d', hairStyle: 'bun', skin: '#e3bf9c' },
+        {   // 石階：兔子，綠色浴衣
+            opts: { animal: 'rabbit', outfit: 'yukata', top: '#3f5a4a', accent: '#d9a7b0' },
             path: [landAt(stepX - 0.6, 1.8), new THREE.Vector3(stepX, 0.75, stepEdge - 0.35), new THREE.Vector3(stepX, 0.49, stepEdge - 1.1), new THREE.Vector3(stepX, 0.23, stepEdge - 1.95)]
         },
-        {   // 平石：紅 T 恤卡其褲、黑色捲髮
-            opts: { outfit: 'tshirt', top: '#c0392b', bottom: '#a08d6a', hair: '#1a1410', hairStyle: 'curly', skin: '#5a3a26' },
+        {   // 平石：狸貓，紅 T 恤配卡其褲
+            opts: { animal: 'tanuki', outfit: 'tshirt', top: '#c0392b', bottom: '#a08d6a' },
             path: [landAt(slabX + 0.8, 2.0), new THREE.Vector3(slabX + 0.2, 0.6, slabEdge - 0.25), new THREE.Vector3(slabX, 0.31, slabEdge - 1.25)]
         }
     ];
